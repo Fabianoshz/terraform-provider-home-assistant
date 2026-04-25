@@ -1,0 +1,1 @@
+# opentofu-provider-home-assistant
