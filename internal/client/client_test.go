@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Fabianoshz/terraform-provider-home-assistant/internal/client"
-	"github.com/Fabianoshz/terraform-provider-home-assistant/internal/testutil"
+	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
+	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/testutil"
 )
 
 const testToken = "test-token-abc123"

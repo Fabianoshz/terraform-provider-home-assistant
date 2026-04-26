@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/Fabianoshz/terraform-provider-home-assistant/internal/client"
+	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"

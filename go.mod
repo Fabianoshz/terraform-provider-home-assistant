@@ -1,4 +1,4 @@
-module github.com/Fabianoshz/terraform-provider-home-assistant
+module github.com/Fabianoshz/terraform-provider-homeassistant
 
 go 1.25.8
 

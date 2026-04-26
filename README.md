@@ -1,1 +1,1 @@
-# terraform-provider-home-assistant
+# terraform-provider-homeassistant

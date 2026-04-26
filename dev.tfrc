@@ -1,6 +1,6 @@
 provider_installation {
   dev_overrides {
-    "registry.terraform.io/Fabianoshz/home-assistant" = "/home/fabiano/Documents/Projects/Fabianoshz/terraform-provider-home-assistant"
+    "registry.terraform.io/Fabianoshz/homeassistant" = "/home/fabiano/Documents/Projects/Fabianoshz/terraform-provider-homeassistant"
   }
   direct {}
 }

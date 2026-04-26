@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Fabianoshz/terraform-provider-home-assistant/internal/testutil"
+	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 

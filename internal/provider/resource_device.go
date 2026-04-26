@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Fabianoshz/terraform-provider-home-assistant/internal/client"
+	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"

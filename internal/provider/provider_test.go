@@ -1,7 +1,7 @@
 package provider_test
 
 import (
-	"github.com/Fabianoshz/terraform-provider-home-assistant/internal/provider"
+	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
