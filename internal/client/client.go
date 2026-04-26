@@ -156,9 +156,9 @@ type Automation struct {
 	Alias       string          `json:"alias"`
 	Description string          `json:"description"`
 	Mode        string          `json:"mode"`
-	Trigger     json.RawMessage `json:"trigger"`
-	Condition   json.RawMessage `json:"condition"`
-	Action      json.RawMessage `json:"action"`
+	Trigger     json.RawMessage `json:"triggers"`
+	Condition   json.RawMessage `json:"conditions"`
+	Action      json.RawMessage `json:"actions"`
 }
 
 func (c *Client) GetAutomations(ctx context.Context) ([]Automation, error) {
@@ -201,12 +201,16 @@ func (c *Client) GetAutomation(ctx context.Context, id string) (*Automation, err
 }
 
 func (c *Client) CreateAutomation(ctx context.Context, a Automation) (*Automation, error) {
+	if a.ID == "" {
+		a.ID = fmt.Sprintf("%d", time.Now().UnixMilli())
+	}
+
 	body, err := json.Marshal(a)
 	if err != nil {
 		return nil, fmt.Errorf("encoding automation: %w", err)
 	}
 
-	resp, err := c.restDo(ctx, http.MethodPost, "/api/config/automation/config", body)
+	resp, err := c.restDo(ctx, http.MethodPost, "/api/config/automation/config/"+a.ID, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating automation: %w", err)
 	}
@@ -216,11 +220,8 @@ func (c *Client) CreateAutomation(ctx context.Context, a Automation) (*Automatio
 		return nil, fmt.Errorf("unexpected status %d creating automation", resp.StatusCode)
 	}
 
-	var created Automation
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("decoding created automation: %w", err)
-	}
-	return &created, nil
+	resp.Body.Close()
+	return c.GetAutomation(ctx, a.ID)
 }
 
 func (c *Client) UpdateAutomation(ctx context.Context, a Automation) (*Automation, error) {
