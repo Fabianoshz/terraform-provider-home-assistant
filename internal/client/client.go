@@ -328,18 +328,22 @@ func (c *Client) GetArea(ctx context.Context, areaID string) (*Area, error) {
 }
 
 func (c *Client) CreateArea(ctx context.Context, name string, icon *string) (*Area, error) {
-	return c.areaCommand(ctx, "config/area_registry/create", map[string]any{
-		"name": name,
-		"icon": icon,
-	})
+	fields := map[string]any{"name": name}
+	if icon != nil {
+		fields["icon"] = *icon
+	}
+	return c.areaCommand(ctx, "config/area_registry/create", fields)
 }
 
 func (c *Client) UpdateArea(ctx context.Context, areaID, name string, icon *string) (*Area, error) {
-	return c.areaCommand(ctx, "config/area_registry/update", map[string]any{
+	fields := map[string]any{
 		"area_id": areaID,
 		"name":    name,
-		"icon":    icon,
-	})
+	}
+	if icon != nil {
+		fields["icon"] = *icon
+	}
+	return c.areaCommand(ctx, "config/area_registry/update", fields)
 }
 
 func (c *Client) DeleteArea(ctx context.Context, areaID string) error {
