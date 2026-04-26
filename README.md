@@ -1,1 +1,1 @@
-# opentofu-provider-home-assistant
+# terraform-provider-home-assistant
