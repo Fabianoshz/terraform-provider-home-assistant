@@ -392,6 +392,7 @@ func (c *Client) areaCommand(ctx context.Context, cmdType string, fields map[str
 }
 
 type EntityRegistryEntry struct {
+	ID           string  `json:"id"`
 	EntityID     string  `json:"entity_id"`
 	DeviceID     *string `json:"device_id"`
 	Name         *string `json:"name"`
@@ -486,6 +487,20 @@ func (c *Client) GetDevice(ctx context.Context, id string) (*Device, error) {
 		}
 	}
 	return nil, nil
+}
+
+func (c *Client) GetEntitiesForDevice(ctx context.Context, deviceID string) ([]EntityRegistryEntry, error) {
+	_, entries, err := c.getRegistries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var result []EntityRegistryEntry
+	for _, e := range entries {
+		if e.DeviceID != nil && *e.DeviceID == deviceID {
+			result = append(result, e)
+		}
+	}
+	return result, nil
 }
 
 type DeviceUpdate struct {

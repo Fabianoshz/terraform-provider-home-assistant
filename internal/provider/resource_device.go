@@ -5,9 +5,11 @@ import (
 	"fmt"
 
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -29,7 +31,9 @@ type DeviceResourceModel struct {
 	NameByUser  types.String `tfsdk:"name_by_user"`
 	AreaID      types.String `tfsdk:"area_id"`
 	Disabled    types.Bool   `tfsdk:"disabled"`
+	Entities    types.List   `tfsdk:"entities"`
 }
+
 
 func (r *DeviceResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_device"
@@ -68,6 +72,24 @@ func (r *DeviceResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"entities": schema.ListNestedAttribute{
+				Computed:    true,
+				Description: "Entities associated with this device.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id":            schema.StringAttribute{Computed: true},
+						"entity_id":     schema.StringAttribute{Computed: true},
+						"name":          schema.StringAttribute{Computed: true},
+						"original_name": schema.StringAttribute{Computed: true},
+						"platform":      schema.StringAttribute{Computed: true},
+						"area_id":       schema.StringAttribute{Computed: true},
+						"icon":          schema.StringAttribute{Computed: true},
+					},
+				},
+			},
 		},
 	}
 }
@@ -97,7 +119,13 @@ func (r *DeviceResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(device, plan))...)
+	entities, err := r.client.GetEntitiesForDevice(ctx, device.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to fetch device entities", err.Error())
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(device, entities))...)
 }
 
 func (r *DeviceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -117,7 +145,13 @@ func (r *DeviceResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(device, state))...)
+	entities, err := r.client.GetEntitiesForDevice(ctx, device.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to fetch device entities", err.Error())
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(device, entities))...)
 }
 
 func (r *DeviceResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -133,7 +167,13 @@ func (r *DeviceResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(device, plan))...)
+	entities, err := r.client.GetEntitiesForDevice(ctx, device.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to fetch device entities", err.Error())
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(device, entities))...)
 }
 
 func (r *DeviceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -169,13 +209,38 @@ func (r *DeviceResource) toUpdate(m DeviceResourceModel) client.DeviceUpdate {
 	return update
 }
 
-func (r *DeviceResource) toModel(d *client.Device, plan DeviceResourceModel) DeviceResourceModel {
+var entityAttrTypes = map[string]attr.Type{
+	"id":            types.StringType,
+	"entity_id":     types.StringType,
+	"name":          types.StringType,
+	"original_name": types.StringType,
+	"platform":      types.StringType,
+	"area_id":       types.StringType,
+	"icon":          types.StringType,
+}
+
+func (r *DeviceResource) toModel(d *client.Device, entities []client.EntityRegistryEntry) DeviceResourceModel {
+	entityObjs := make([]attr.Value, len(entities))
+	for i, e := range entities {
+		obj, _ := types.ObjectValue(entityAttrTypes, map[string]attr.Value{
+			"id":            types.StringValue(e.ID),
+			"entity_id":     types.StringValue(e.EntityID),
+			"name":          stringPtrValue(e.Name),
+			"original_name": stringPtrValue(e.OriginalName),
+			"platform":      types.StringValue(e.Platform),
+			"area_id":       stringPtrValue(e.AreaID),
+			"icon":          stringPtrValue(e.Icon),
+		})
+		entityObjs[i] = obj
+	}
+	entityList, _ := types.ListValue(types.ObjectType{AttrTypes: entityAttrTypes}, entityObjs)
 	return DeviceResourceModel{
 		ID:         types.StringValue(d.ID),
 		DeviceID:   types.StringValue(d.ID),
 		NameByUser: stringPtrValue(d.NameByUser),
 		AreaID:     stringPtrValue(d.AreaID),
 		Disabled:   types.BoolValue(d.DisabledBy != nil),
+		Entities:   entityList,
 	}
 }
 

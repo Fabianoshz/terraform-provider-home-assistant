@@ -23,7 +23,7 @@ resource "homeassistant_automation" "motion_lights" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("homeassistant_automation.motion_lights", "id", "automation_1"),
+					resource.TestCheckResourceAttrSet("homeassistant_automation.motion_lights", "id"),
 					resource.TestCheckResourceAttr("homeassistant_automation.motion_lights", "alias", "Turn on lights on motion"),
 					resource.TestCheckResourceAttr("homeassistant_automation.motion_lights", "mode", "single"),
 				),

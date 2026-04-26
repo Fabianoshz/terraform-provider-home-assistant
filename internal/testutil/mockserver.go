@@ -56,9 +56,9 @@ type MockAutomation struct {
 	Alias       string          `json:"alias"`
 	Description string          `json:"description"`
 	Mode        string          `json:"mode"`
-	Trigger     json.RawMessage `json:"trigger"`
-	Condition   json.RawMessage `json:"condition"`
-	Action      json.RawMessage `json:"action"`
+	Trigger     json.RawMessage `json:"triggers"`
+	Condition   json.RawMessage `json:"conditions"`
+	Action      json.RawMessage `json:"actions"`
 }
 
 type MockServerConfig struct {
@@ -271,7 +271,8 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 					return
 				}
 			}
-			w.WriteHeader(http.StatusNotFound)
+			cfg.Automations = append(cfg.Automations, a)
+			json.NewEncoder(w).Encode(a)
 		case http.MethodDelete:
 			for i, a := range cfg.Automations {
 				if a.ID == id {
