@@ -29,6 +29,7 @@ type AutomationModel struct {
 	Trigger     types.String `tfsdk:"trigger"`
 	Condition   types.String `tfsdk:"condition"`
 	Action      types.String `tfsdk:"action"`
+	AreaID      types.String `tfsdk:"area_id"`
 }
 
 type AutomationsDataSourceModel struct {
@@ -51,9 +52,10 @@ func (d *AutomationsDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 						"alias":       schema.StringAttribute{Computed: true, Description: "Display name."},
 						"description": schema.StringAttribute{Computed: true, Description: "Description."},
 						"mode":        schema.StringAttribute{Computed: true, Description: "Automation mode."},
-						"trigger":     schema.StringAttribute{Computed: true, Description: "JSON-encoded triggers."},
-						"condition":   schema.StringAttribute{Computed: true, Description: "JSON-encoded conditions."},
-						"action":      schema.StringAttribute{Computed: true, Description: "JSON-encoded actions."},
+						"trigger":   schema.StringAttribute{Computed: true, Description: "JSON-encoded triggers."},
+						"condition": schema.StringAttribute{Computed: true, Description: "JSON-encoded conditions."},
+						"action":    schema.StringAttribute{Computed: true, Description: "JSON-encoded actions."},
+						"area_id":   schema.StringAttribute{Computed: true, Description: "Area assigned to this automation."},
 					},
 				},
 			},

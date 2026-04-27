@@ -40,9 +40,10 @@ func (r *AutomationResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"alias":       schema.StringAttribute{Required: true, Description: "Display name of the automation."},
 			"description": schema.StringAttribute{Optional: true, Computed: true, Description: "Description of what the automation does."},
 			"mode":        schema.StringAttribute{Optional: true, Computed: true, Description: "Automation mode: single, restart, queued, or parallel. Defaults to single."},
-			"trigger":     schema.StringAttribute{Required: true, Description: "JSON-encoded list of triggers."},
-			"condition":   schema.StringAttribute{Optional: true, Computed: true, Description: "JSON-encoded list of conditions."},
-			"action":      schema.StringAttribute{Required: true, Description: "JSON-encoded list of actions."},
+			"trigger":   schema.StringAttribute{Required: true, Description: "JSON-encoded list of triggers."},
+			"condition": schema.StringAttribute{Optional: true, Computed: true, Description: "JSON-encoded list of conditions."},
+			"action":    schema.StringAttribute{Required: true, Description: "JSON-encoded list of actions."},
+			"area_id":   schema.StringAttribute{Optional: true, Description: "Area to assign this automation to."},
 		},
 	}
 }
@@ -155,6 +156,7 @@ func automationToModel(a *client.Automation) AutomationModel {
 		Trigger:     types.StringValue(rawToString(a.Trigger, "[]")),
 		Condition:   types.StringValue(rawToString(a.Condition, "[]")),
 		Action:      types.StringValue(rawToString(a.Action, "[]")),
+		AreaID:      stringPtrValue(a.AreaID),
 	}
 }
 
@@ -182,6 +184,7 @@ func modelToAutomation(m AutomationModel) (*client.Automation, error) {
 		Trigger:     trigger,
 		Condition:   condition,
 		Action:      action,
+		AreaID:      valueOrNil(m.AreaID),
 	}, nil
 }
 

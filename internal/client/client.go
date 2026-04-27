@@ -159,6 +159,7 @@ type Automation struct {
 	Trigger     json.RawMessage `json:"triggers"`
 	Condition   json.RawMessage `json:"conditions"`
 	Action      json.RawMessage `json:"actions"`
+	AreaID      *string         `json:"-"`
 }
 
 func (c *Client) GetAutomations(ctx context.Context) ([]Automation, error) {
@@ -197,6 +198,14 @@ func (c *Client) GetAutomation(ctx context.Context, id string) (*Automation, err
 	if err := json.NewDecoder(resp.Body).Decode(&automation); err != nil {
 		return nil, fmt.Errorf("decoding automation: %w", err)
 	}
+
+	entry, err := c.GetEntityByUniqueID(ctx, automation.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching automation entity registry: %w", err)
+	}
+	if entry != nil {
+		automation.AreaID = entry.AreaID
+	}
 	return &automation, nil
 }
 
@@ -221,6 +230,9 @@ func (c *Client) CreateAutomation(ctx context.Context, a Automation) (*Automatio
 	}
 
 	resp.Body.Close()
+	if err := c.setAutomationAreaID(ctx, a.ID, a.AreaID); err != nil {
+		return nil, err
+	}
 	return c.GetAutomation(ctx, a.ID)
 }
 
@@ -234,17 +246,31 @@ func (c *Client) UpdateAutomation(ctx context.Context, a Automation) (*Automatio
 	if err != nil {
 		return nil, fmt.Errorf("updating automation: %w", err)
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status %d updating automation", resp.StatusCode)
 	}
 
-	var updated Automation
-	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
-		return nil, fmt.Errorf("decoding updated automation: %w", err)
+	if err := c.setAutomationAreaID(ctx, a.ID, a.AreaID); err != nil {
+		return nil, err
 	}
-	return &updated, nil
+	return c.GetAutomation(ctx, a.ID)
+}
+
+func (c *Client) setAutomationAreaID(ctx context.Context, automationID string, areaID *string) error {
+	entry, err := c.GetEntityByUniqueID(ctx, automationID)
+	if err != nil {
+		return fmt.Errorf("finding automation entity: %w", err)
+	}
+	if entry == nil {
+		return nil
+	}
+	_, err = c.UpdateEntity(ctx, EntityUpdate{
+		EntityID: entry.EntityID,
+		AreaID:   areaID,
+	})
+	return err
 }
 
 func (c *Client) DeleteAutomation(ctx context.Context, id string) error {
@@ -393,6 +419,7 @@ func (c *Client) areaCommand(ctx context.Context, cmdType string, fields map[str
 
 type EntityRegistryEntry struct {
 	ID           string  `json:"id"`
+	UniqueID     string  `json:"unique_id"`
 	EntityID     string  `json:"entity_id"`
 	DeviceID     *string `json:"device_id"`
 	Name         *string `json:"name"`
@@ -406,6 +433,19 @@ type EntityRegistryEntry struct {
 func (c *Client) GetEntityRegistry(ctx context.Context) ([]EntityRegistryEntry, error) {
 	_, entries, err := c.getRegistries(ctx)
 	return entries, err
+}
+
+func (c *Client) GetEntityByUniqueID(ctx context.Context, uniqueID string) (*EntityRegistryEntry, error) {
+	entries, err := c.GetEntityRegistry(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		if e.UniqueID == uniqueID {
+			return &e, nil
+		}
+	}
+	return nil, nil
 }
 
 func (c *Client) GetEntityRegistryEntry(ctx context.Context, entityID string) (*EntityRegistryEntry, error) {
