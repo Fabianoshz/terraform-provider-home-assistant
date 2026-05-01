@@ -150,11 +150,8 @@ func (r *EntityResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 	// Clear user-managed fields; entities cannot be deleted via API.
 	_, err := r.client.UpdateEntity(ctx, client.EntityUpdate{
-		EntityID:   state.EntityID.ValueString(),
-		Name:       nil,
-		Icon:       nil,
-		AreaID:     nil,
-		DisabledBy: nil,
+		EntityID:      state.EntityID.ValueString(),
+		SetDisabledBy: true,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to reset entity on destroy", err.Error())
@@ -169,6 +166,7 @@ func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
 		AreaID:   valueOrNil(m.AreaID),
 	}
 	if !m.Disabled.IsNull() && !m.Disabled.IsUnknown() {
+		update.SetDisabledBy = true
 		if m.Disabled.ValueBool() {
 			update.DisabledBy = strPtr("user")
 		}

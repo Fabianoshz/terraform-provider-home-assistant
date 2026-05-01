@@ -556,11 +556,12 @@ func (c *Client) GetEntityRegistryEntry(ctx context.Context, entityID string) (*
 }
 
 type EntityUpdate struct {
-	EntityID   string  `json:"entity_id"`
-	Name       *string `json:"name"`
-	Icon       *string `json:"icon"`
-	AreaID     *string `json:"area_id"`
-	DisabledBy *string `json:"disabled_by"`
+	EntityID      string
+	Name          *string
+	Icon          *string
+	AreaID        *string
+	DisabledBy    *string
+	SetDisabledBy bool
 }
 
 func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*EntityRegistryEntry, error) {
@@ -571,13 +572,15 @@ func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*Entity
 	defer conn.Close()
 
 	payload := map[string]any{
-		"id":          1,
-		"type":        "config/entity_registry/update",
-		"entity_id":   update.EntityID,
-		"name":        update.Name,
-		"icon":        update.Icon,
-		"area_id":     update.AreaID,
-		"disabled_by": update.DisabledBy,
+		"id":        1,
+		"type":      "config/entity_registry/update",
+		"entity_id": update.EntityID,
+		"name":      update.Name,
+		"icon":      update.Icon,
+		"area_id":   update.AreaID,
+	}
+	if update.SetDisabledBy {
+		payload["disabled_by"] = update.DisabledBy
 	}
 
 	if err := conn.WriteJSON(payload); err != nil {
