@@ -310,6 +310,7 @@ type Area struct {
 	Aliases []string `json:"aliases"`
 	Icon    *string  `json:"icon"`
 	Picture *string  `json:"picture"`
+	FloorID *string  `json:"floor_id"`
 }
 
 func (c *Client) GetAreas(ctx context.Context) ([]Area, error) {
@@ -354,18 +355,19 @@ func (c *Client) GetArea(ctx context.Context, areaID string) (*Area, error) {
 	return nil, nil
 }
 
-func (c *Client) CreateArea(ctx context.Context, name string, icon *string) (*Area, error) {
-	fields := map[string]any{"name": name}
+func (c *Client) CreateArea(ctx context.Context, name string, icon, floorID *string) (*Area, error) {
+	fields := map[string]any{"name": name, "floor_id": floorID}
 	if icon != nil {
 		fields["icon"] = *icon
 	}
 	return c.areaCommand(ctx, "config/area_registry/create", fields)
 }
 
-func (c *Client) UpdateArea(ctx context.Context, areaID, name string, icon *string) (*Area, error) {
+func (c *Client) UpdateArea(ctx context.Context, areaID, name string, icon, floorID *string) (*Area, error) {
 	fields := map[string]any{
-		"area_id": areaID,
-		"name":    name,
+		"area_id":  areaID,
+		"name":     name,
+		"floor_id": floorID,
 	}
 	if icon != nil {
 		fields["icon"] = *icon
@@ -378,6 +380,98 @@ func (c *Client) DeleteArea(ctx context.Context, areaID string) error {
 		"area_id": areaID,
 	})
 	return err
+}
+
+type Floor struct {
+	FloorID string  `json:"floor_id"`
+	Name    string  `json:"name"`
+	Level   *int    `json:"level"`
+	Icon    *string `json:"icon"`
+}
+
+func (c *Client) GetFloors(ctx context.Context) ([]Floor, error) {
+	result, err := c.floorCommand(ctx, "config/floor_registry/list", nil)
+	if err != nil {
+		return nil, err
+	}
+	var floors []Floor
+	if err := json.Unmarshal(result, &floors); err != nil {
+		return nil, fmt.Errorf("decoding floors: %w", err)
+	}
+	return floors, nil
+}
+
+func (c *Client) GetFloor(ctx context.Context, floorID string) (*Floor, error) {
+	floors, err := c.GetFloors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range floors {
+		if f.FloorID == floorID {
+			return &f, nil
+		}
+	}
+	return nil, nil
+}
+
+func (c *Client) CreateFloor(ctx context.Context, name string, level *int, icon *string) (*Floor, error) {
+	fields := map[string]any{"name": name, "level": level, "icon": icon}
+	return c.floorCommandOne(ctx, "config/floor_registry/create", fields)
+}
+
+func (c *Client) UpdateFloor(ctx context.Context, floorID, name string, level *int, icon *string) (*Floor, error) {
+	fields := map[string]any{"floor_id": floorID, "name": name, "level": level, "icon": icon}
+	return c.floorCommandOne(ctx, "config/floor_registry/update", fields)
+}
+
+func (c *Client) DeleteFloor(ctx context.Context, floorID string) error {
+	_, err := c.floorCommand(ctx, "config/floor_registry/delete", map[string]any{"floor_id": floorID})
+	return err
+}
+
+func (c *Client) floorCommandOne(ctx context.Context, cmdType string, fields map[string]any) (*Floor, error) {
+	result, err := c.floorCommand(ctx, cmdType, fields)
+	if err != nil {
+		return nil, err
+	}
+	var floor Floor
+	if err := json.Unmarshal(result, &floor); err != nil {
+		return nil, fmt.Errorf("decoding floor: %w", err)
+	}
+	return &floor, nil
+}
+
+func (c *Client) floorCommand(ctx context.Context, cmdType string, fields map[string]any) (json.RawMessage, error) {
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	msg := map[string]any{"id": 1, "type": cmdType}
+	for k, v := range fields {
+		msg[k] = v
+	}
+	if err := conn.WriteJSON(msg); err != nil {
+		return nil, fmt.Errorf("sending floor command: %w", err)
+	}
+	var wsResult struct {
+		Success bool            `json:"success"`
+		Result  json.RawMessage `json:"result"`
+		Error   *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := conn.ReadJSON(&wsResult); err != nil {
+		return nil, fmt.Errorf("reading floor response: %w", err)
+	}
+	if !wsResult.Success {
+		if wsResult.Error != nil {
+			return nil, fmt.Errorf("floor command failed: %s", wsResult.Error.Message)
+		}
+		return nil, fmt.Errorf("floor command failed")
+	}
+	return wsResult.Result, nil
 }
 
 func (c *Client) areaCommand(ctx context.Context, cmdType string, fields map[string]any) (*Area, error) {

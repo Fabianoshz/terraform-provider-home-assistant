@@ -49,6 +49,7 @@ type MockArea struct {
 	Name    string  `json:"name"`
 	Icon    *string `json:"icon"`
 	Picture *string `json:"picture"`
+	FloorID *string `json:"floor_id"`
 }
 
 type MockAutomation struct {
@@ -61,6 +62,13 @@ type MockAutomation struct {
 	Action      json.RawMessage `json:"actions"`
 }
 
+type MockFloor struct {
+	FloorID string  `json:"floor_id"`
+	Name    string  `json:"name"`
+	Level   *int    `json:"level"`
+	Icon    *string `json:"icon"`
+}
+
 type MockServerConfig struct {
 	Token          string
 	Areas          []MockArea
@@ -68,6 +76,7 @@ type MockServerConfig struct {
 	Devices        []MockDevice
 	EntityRegistry []MockEntityRegistry
 	EntityStates   []MockEntityState
+	Floors         []MockFloor
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
@@ -119,6 +128,9 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 				if icon, ok := cmd["icon"].(string); ok {
 					area.Icon = Ptr(icon)
 				}
+				if floorID, ok := cmd["floor_id"].(string); ok {
+					area.FloorID = Ptr(floorID)
+				}
 				cfg.Areas = append(cfg.Areas, area)
 				payload = area
 			case "config/area_registry/update":
@@ -137,6 +149,13 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 							cfg.Areas[i].Icon = Ptr(s)
 						}
 					}
+					if v, ok := cmd["floor_id"]; ok {
+						if v == nil {
+							cfg.Areas[i].FloorID = nil
+						} else if s, ok := v.(string); ok {
+							cfg.Areas[i].FloorID = Ptr(s)
+						}
+					}
 					payload = cfg.Areas[i]
 					break
 				}
@@ -145,6 +164,57 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 				for i, a := range cfg.Areas {
 					if a.AreaID == areaID {
 						cfg.Areas = append(cfg.Areas[:i], cfg.Areas[i+1:]...)
+						break
+					}
+				}
+				payload = map[string]any{}
+			case "config/floor_registry/list":
+				payload = cfg.Floors
+			case "config/floor_registry/create":
+				name, _ := cmd["name"].(string)
+				floorID := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
+				floor := MockFloor{FloorID: floorID, Name: name}
+				if icon, ok := cmd["icon"].(string); ok {
+					floor.Icon = Ptr(icon)
+				}
+				if level, ok := cmd["level"].(float64); ok {
+					l := int(level)
+					floor.Level = &l
+				}
+				cfg.Floors = append(cfg.Floors, floor)
+				payload = floor
+			case "config/floor_registry/update":
+				floorID, _ := cmd["floor_id"].(string)
+				for i, f := range cfg.Floors {
+					if f.FloorID != floorID {
+						continue
+					}
+					if name, ok := cmd["name"].(string); ok {
+						cfg.Floors[i].Name = name
+					}
+					if v, ok := cmd["icon"]; ok {
+						if v == nil {
+							cfg.Floors[i].Icon = nil
+						} else if s, ok := v.(string); ok {
+							cfg.Floors[i].Icon = Ptr(s)
+						}
+					}
+					if v, ok := cmd["level"]; ok {
+						if v == nil {
+							cfg.Floors[i].Level = nil
+						} else if l, ok := v.(float64); ok {
+							li := int(l)
+							cfg.Floors[i].Level = &li
+						}
+					}
+					payload = cfg.Floors[i]
+					break
+				}
+			case "config/floor_registry/delete":
+				floorID, _ := cmd["floor_id"].(string)
+				for i, f := range cfg.Floors {
+					if f.FloorID == floorID {
+						cfg.Floors = append(cfg.Floors[:i], cfg.Floors[i+1:]...)
 						break
 					}
 				}

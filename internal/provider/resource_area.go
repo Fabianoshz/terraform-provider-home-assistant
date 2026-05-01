@@ -23,10 +23,11 @@ func NewAreaResource() resource.Resource {
 }
 
 type AreaResourceModel struct {
-	ID     types.String `tfsdk:"id"`
-	AreaID types.String `tfsdk:"area_id"`
-	Name   types.String `tfsdk:"name"`
-	Icon   types.String `tfsdk:"icon"`
+	ID      types.String `tfsdk:"id"`
+	AreaID  types.String `tfsdk:"area_id"`
+	Name    types.String `tfsdk:"name"`
+	Icon    types.String `tfsdk:"icon"`
+	FloorID types.String `tfsdk:"floor_id"`
 }
 
 func (r *AreaResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -58,6 +59,10 @@ func (r *AreaResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Optional:    true,
 				Description: "MDI icon for the area (e.g. \"mdi:sofa\").",
 			},
+			"floor_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "Floor this area belongs to.",
+			},
 		},
 	}
 }
@@ -81,7 +86,7 @@ func (r *AreaResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	area, err := r.client.CreateArea(ctx, plan.Name.ValueString(), valueOrNil(plan.Icon))
+	area, err := r.client.CreateArea(ctx, plan.Name.ValueString(), valueOrNil(plan.Icon), valueOrNil(plan.FloorID))
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create area", err.Error())
 		return
@@ -123,7 +128,7 @@ func (r *AreaResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	area, err := r.client.UpdateArea(ctx, state.AreaID.ValueString(), plan.Name.ValueString(), valueOrNil(plan.Icon))
+	area, err := r.client.UpdateArea(ctx, state.AreaID.ValueString(), plan.Name.ValueString(), valueOrNil(plan.Icon), valueOrNil(plan.FloorID))
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update area", err.Error())
 		return
@@ -146,9 +151,10 @@ func (r *AreaResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 func areaToModel(a *client.Area) AreaResourceModel {
 	return AreaResourceModel{
-		ID:     types.StringValue(a.AreaID),
-		AreaID: types.StringValue(a.AreaID),
-		Name:   types.StringValue(a.Name),
-		Icon:   stringPtrValue(a.Icon),
+		ID:      types.StringValue(a.AreaID),
+		AreaID:  types.StringValue(a.AreaID),
+		Name:    types.StringValue(a.Name),
+		Icon:    stringPtrValue(a.Icon),
+		FloorID: stringPtrValue(a.FloorID),
 	}
 }
