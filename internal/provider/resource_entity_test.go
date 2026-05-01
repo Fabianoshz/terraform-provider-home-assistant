@@ -22,6 +22,7 @@ func TestEntityResource_basic(t *testing.T) {
 			{
 				Config: providerConfig(srv.URL, "test-token") + `
 resource "homeassistant_entity" "temp" {
+  device_id = "device-1"
   entity_id = "sensor.temperature"
   name      = "Living Room Temperature"
   icon      = "mdi:thermometer"
@@ -31,7 +32,7 @@ resource "homeassistant_entity" "temp" {
 					resource.TestCheckResourceAttr("homeassistant_entity.temp", "id", "sensor.temperature"),
 					resource.TestCheckResourceAttr("homeassistant_entity.temp", "name", "Living Room Temperature"),
 					resource.TestCheckResourceAttr("homeassistant_entity.temp", "icon", "mdi:thermometer"),
-					resource.TestCheckResourceAttr("homeassistant_entity.temp", "disabled", "false"),
+					resource.TestCheckResourceAttr("homeassistant_entity.temp", "enabled", "true"),
 				),
 			},
 		},
@@ -56,6 +57,7 @@ func TestEntityResource_withArea(t *testing.T) {
 			{
 				Config: providerConfig(srv.URL, "test-token") + `
 resource "homeassistant_entity" "temp" {
+  device_id = "device-1"
   entity_id = "sensor.temperature"
   area_id   = "kitchen"
 }
@@ -81,11 +83,12 @@ func TestEntityResource_disable(t *testing.T) {
 			{
 				Config: providerConfig(srv.URL, "test-token") + `
 resource "homeassistant_entity" "temp" {
+  device_id = "device-1"
   entity_id = "sensor.temperature"
-  disabled  = true
+  enabled   = false
 }
 `,
-				Check: resource.TestCheckResourceAttr("homeassistant_entity.temp", "disabled", "true"),
+				Check: resource.TestCheckResourceAttr("homeassistant_entity.temp", "enabled", "false"),
 			},
 		},
 	})
@@ -106,6 +109,7 @@ func TestEntityResource_update(t *testing.T) {
 			{
 				Config: providerConfig(srv.URL, "test-token") + `
 resource "homeassistant_entity" "temp" {
+  device_id = "device-1"
   entity_id = "sensor.temperature"
   name      = "Old Name"
 }
@@ -115,6 +119,7 @@ resource "homeassistant_entity" "temp" {
 			{
 				Config: providerConfig(srv.URL, "test-token") + `
 resource "homeassistant_entity" "temp" {
+  device_id = "device-1"
   entity_id = "sensor.temperature"
   name      = "New Name"
   icon      = "mdi:thermometer"

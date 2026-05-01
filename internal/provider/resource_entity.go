@@ -25,11 +25,12 @@ func NewEntityResource() resource.Resource {
 
 type EntityResourceModel struct {
 	ID       types.String `tfsdk:"id"`
+	DeviceID types.String `tfsdk:"device_id"`
 	EntityID types.String `tfsdk:"entity_id"`
 	Name     types.String `tfsdk:"name"`
 	Icon     types.String `tfsdk:"icon"`
 	AreaID   types.String `tfsdk:"area_id"`
-	Disabled types.Bool   `tfsdk:"disabled"`
+	Enabled  types.Bool   `tfsdk:"enabled"`
 }
 
 func (r *EntityResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -44,6 +45,13 @@ func (r *EntityResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"device_id": schema.StringAttribute{
+				Required:    true,
+				Description: "The ID of the device this entity belongs to.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"entity_id": schema.StringAttribute{
@@ -65,10 +73,10 @@ func (r *EntityResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Optional:    true,
 				Description: "Area to assign this entity to.",
 			},
-			"disabled": schema.BoolAttribute{
+			"enabled": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Whether the entity is disabled. When true, sets disabled_by to \"user\".",
+				Description: "Whether the entity is enabled. When false, sets disabled_by to \"user\".",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
@@ -96,6 +104,20 @@ func (r *EntityResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
+	existing, err := r.client.GetEntityRegistryEntry(ctx, plan.EntityID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to read entity", err.Error())
+		return
+	}
+	if existing == nil {
+		resp.Diagnostics.AddError("Entity not found", fmt.Sprintf("Entity %q does not exist in the registry.", plan.EntityID.ValueString()))
+		return
+	}
+	if existing.DeviceID == nil || *existing.DeviceID != plan.DeviceID.ValueString() {
+		resp.Diagnostics.AddError("Entity does not belong to device", fmt.Sprintf("Entity %q does not belong to device %q.", plan.EntityID.ValueString(), plan.DeviceID.ValueString()))
+		return
+	}
+
 	entry, err := r.client.UpdateEntity(ctx, r.toUpdate(plan))
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to configure entity", err.Error())
@@ -117,7 +139,7 @@ func (r *EntityResource) Read(ctx context.Context, req resource.ReadRequest, res
 		resp.Diagnostics.AddError("Failed to read entity", err.Error())
 		return
 	}
-	if entry == nil {
+	if entry == nil || entry.DeviceID == nil || *entry.DeviceID != state.DeviceID.ValueString() {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -165,9 +187,9 @@ func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
 		Icon:     valueOrNil(m.Icon),
 		AreaID:   valueOrNil(m.AreaID),
 	}
-	if !m.Disabled.IsNull() && !m.Disabled.IsUnknown() {
+	if !m.Enabled.IsNull() && !m.Enabled.IsUnknown() {
 		update.SetDisabledBy = true
-		if m.Disabled.ValueBool() {
+		if !m.Enabled.ValueBool() {
 			update.DisabledBy = strPtr("user")
 		}
 	}
@@ -177,10 +199,11 @@ func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
 func (r *EntityResource) toModel(e *client.EntityRegistryEntry) EntityResourceModel {
 	return EntityResourceModel{
 		ID:       types.StringValue(e.EntityID),
+		DeviceID: types.StringPointerValue(e.DeviceID),
 		EntityID: types.StringValue(e.EntityID),
 		Name:     stringPtrValue(e.Name),
 		Icon:     stringPtrValue(e.Icon),
 		AreaID:   stringPtrValue(e.AreaID),
-		Disabled: types.BoolValue(e.DisabledBy != nil),
+		Enabled:  types.BoolValue(e.DisabledBy == nil),
 	}
 }
