@@ -33,6 +33,7 @@ type MockEntityRegistry struct {
 	Platform     string  `json:"platform"`
 	AreaID       *string `json:"area_id"`
 	DisabledBy   *string `json:"disabled_by"`
+	HiddenBy     *string `json:"hidden_by"`
 	Icon         *string `json:"icon"`
 }
 
@@ -255,6 +256,13 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 							cfg.EntityRegistry[i].DisabledBy = nil
 						} else if s, ok := v.(string); ok {
 							cfg.EntityRegistry[i].DisabledBy = Ptr(s)
+						}
+					}
+					if v, ok := cmd["hidden_by"]; ok {
+						if v == nil {
+							cfg.EntityRegistry[i].HiddenBy = nil
+						} else if s, ok := v.(string); ok {
+							cfg.EntityRegistry[i].HiddenBy = Ptr(s)
 						}
 					}
 					// HA wraps the result in entity_entry for this command

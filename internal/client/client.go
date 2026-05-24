@@ -521,6 +521,7 @@ type EntityRegistryEntry struct {
 	Platform     string  `json:"platform"`
 	AreaID       *string `json:"area_id"`
 	DisabledBy   *string `json:"disabled_by"`
+	HiddenBy     *string `json:"hidden_by"`
 	Icon         *string `json:"icon"`
 }
 
@@ -561,10 +562,12 @@ type EntityUpdate struct {
 	Icon          *string
 	AreaID        *string
 	DisabledBy    *string
+	HiddenBy      *string
 	SetName       bool
 	SetIcon       bool
 	SetAreaID     bool
 	SetDisabledBy bool
+	SetHiddenBy   bool
 }
 
 func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*EntityRegistryEntry, error) {
@@ -590,6 +593,9 @@ func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*Entity
 	}
 	if update.SetDisabledBy {
 		payload["disabled_by"] = update.DisabledBy
+	}
+	if update.SetHiddenBy {
+		payload["hidden_by"] = update.HiddenBy
 	}
 
 	if err := conn.WriteJSON(payload); err != nil {

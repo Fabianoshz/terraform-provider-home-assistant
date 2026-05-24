@@ -31,6 +31,7 @@ type EntityResourceModel struct {
 	Icon     types.String `tfsdk:"icon"`
 	AreaID   types.String `tfsdk:"area_id"`
 	Enabled  types.Bool   `tfsdk:"enabled"`
+	Visible  types.Bool   `tfsdk:"visible"`
 }
 
 func (r *EntityResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -89,6 +90,14 @@ func (r *EntityResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether the entity is enabled. When false, sets disabled_by to \"user\".",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"visible": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether the entity is visible. When false, sets hidden_by to \"user\".",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
@@ -189,6 +198,7 @@ func (r *EntityResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		SetIcon:       true,
 		SetAreaID:     true,
 		SetDisabledBy: true,
+		SetHiddenBy:   true,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to reset entity on destroy", err.Error())
@@ -221,6 +231,12 @@ func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
 			update.DisabledBy = strPtr("user")
 		}
 	}
+	if !m.Visible.IsNull() && !m.Visible.IsUnknown() {
+		update.SetHiddenBy = true
+		if !m.Visible.ValueBool() {
+			update.HiddenBy = strPtr("user")
+		}
+	}
 	return update
 }
 
@@ -233,5 +249,6 @@ func (r *EntityResource) toModel(e *client.EntityRegistryEntry) EntityResourceMo
 		Icon:     stringPtrValue(e.Icon),
 		AreaID:   stringPtrValue(e.AreaID),
 		Enabled:  types.BoolValue(e.DisabledBy == nil),
+		Visible:  types.BoolValue(e.HiddenBy == nil),
 	}
 }
