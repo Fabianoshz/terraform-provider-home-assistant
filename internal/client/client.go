@@ -561,6 +561,9 @@ type EntityUpdate struct {
 	Icon          *string
 	AreaID        *string
 	DisabledBy    *string
+	SetName       bool
+	SetIcon       bool
+	SetAreaID     bool
 	SetDisabledBy bool
 }
 
@@ -575,9 +578,15 @@ func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*Entity
 		"id":        1,
 		"type":      "config/entity_registry/update",
 		"entity_id": update.EntityID,
-		"name":      update.Name,
-		"icon":      update.Icon,
-		"area_id":   update.AreaID,
+	}
+	if update.SetName {
+		payload["name"] = update.Name
+	}
+	if update.SetIcon {
+		payload["icon"] = update.Icon
+	}
+	if update.SetAreaID {
+		payload["area_id"] = update.AreaID
 	}
 	if update.SetDisabledBy {
 		payload["disabled_by"] = update.DisabledBy

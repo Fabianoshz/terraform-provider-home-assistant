@@ -63,15 +63,27 @@ func (r *EntityResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 			"name": schema.StringAttribute{
 				Optional:    true,
-				Description: "User-defined name override for the entity.",
+				Computed:    true,
+				Description: "User-defined name override for the entity. Set to \"\" to clear.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"icon": schema.StringAttribute{
 				Optional:    true,
-				Description: "Custom MDI icon (e.g. \"mdi:thermometer\").",
+				Computed:    true,
+				Description: "Custom MDI icon (e.g. \"mdi:thermometer\"). Set to \"\" to clear.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"area_id": schema.StringAttribute{
 				Optional:    true,
-				Description: "Area to assign this entity to.",
+				Computed:    true,
+				Description: "Area to assign this entity to. Set to \"\" to clear.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:    true,
@@ -173,6 +185,9 @@ func (r *EntityResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	// Clear user-managed fields; entities cannot be deleted via API.
 	_, err := r.client.UpdateEntity(ctx, client.EntityUpdate{
 		EntityID:      state.EntityID.ValueString(),
+		SetName:       true,
+		SetIcon:       true,
+		SetAreaID:     true,
 		SetDisabledBy: true,
 	})
 	if err != nil {
@@ -181,11 +196,24 @@ func (r *EntityResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
-	update := client.EntityUpdate{
-		EntityID: m.EntityID.ValueString(),
-		Name:     valueOrNil(m.Name),
-		Icon:     valueOrNil(m.Icon),
-		AreaID:   valueOrNil(m.AreaID),
+	update := client.EntityUpdate{EntityID: m.EntityID.ValueString()}
+	if !m.Name.IsNull() && !m.Name.IsUnknown() {
+		update.SetName = true
+		if m.Name.ValueString() != "" {
+			update.Name = strPtr(m.Name.ValueString())
+		}
+	}
+	if !m.Icon.IsNull() && !m.Icon.IsUnknown() {
+		update.SetIcon = true
+		if m.Icon.ValueString() != "" {
+			update.Icon = strPtr(m.Icon.ValueString())
+		}
+	}
+	if !m.AreaID.IsNull() && !m.AreaID.IsUnknown() {
+		update.SetAreaID = true
+		if m.AreaID.ValueString() != "" {
+			update.AreaID = strPtr(m.AreaID.ValueString())
+		}
 	}
 	if !m.Enabled.IsNull() && !m.Enabled.IsUnknown() {
 		update.SetDisabledBy = true

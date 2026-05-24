@@ -25,9 +25,10 @@ type AreasDataSourceModel struct {
 }
 
 type AreaModel struct {
-	AreaID types.String `tfsdk:"area_id"`
-	Name   types.String `tfsdk:"name"`
-	Icon   types.String `tfsdk:"icon"`
+	AreaID  types.String `tfsdk:"area_id"`
+	Name    types.String `tfsdk:"name"`
+	Icon    types.String `tfsdk:"icon"`
+	FloorID types.String `tfsdk:"floor_id"`
 }
 
 func (d *AreasDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -42,9 +43,10 @@ func (d *AreasDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Computed: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"area_id": schema.StringAttribute{Computed: true, Description: "Area ID."},
-						"name":    schema.StringAttribute{Computed: true, Description: "Display name of the area."},
-						"icon":    schema.StringAttribute{Computed: true, Optional: true, Description: "MDI icon for the area."},
+						"area_id":  schema.StringAttribute{Computed: true, Description: "Area ID."},
+						"name":     schema.StringAttribute{Computed: true, Description: "Display name of the area."},
+						"icon":     schema.StringAttribute{Computed: true, Optional: true, Description: "MDI icon for the area."},
+						"floor_id": schema.StringAttribute{Computed: true, Optional: true, Description: "Floor this area belongs to."},
 					},
 				},
 			},
@@ -80,9 +82,10 @@ func (d *AreasDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	state.Areas = make([]AreaModel, len(areas))
 	for i, a := range areas {
 		state.Areas[i] = AreaModel{
-			AreaID: types.StringValue(a.AreaID),
-			Name:   types.StringValue(a.Name),
-			Icon:   stringPtrValue(a.Icon),
+			AreaID:  types.StringValue(a.AreaID),
+			Name:    types.StringValue(a.Name),
+			Icon:    stringPtrValue(a.Icon),
+			FloorID: stringPtrValue(a.FloorID),
 		}
 	}
 
