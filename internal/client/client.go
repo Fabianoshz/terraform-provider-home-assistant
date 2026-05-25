@@ -160,6 +160,8 @@ type Automation struct {
 	Condition   json.RawMessage `json:"conditions"`
 	Action      json.RawMessage `json:"actions"`
 	AreaID      *string         `json:"-"`
+	Enabled     *bool           `json:"-"`
+	Visible     *bool           `json:"-"`
 }
 
 func (c *Client) GetAutomations(ctx context.Context) ([]Automation, error) {
@@ -205,6 +207,10 @@ func (c *Client) GetAutomation(ctx context.Context, id string) (*Automation, err
 	}
 	if entry != nil {
 		automation.AreaID = entry.AreaID
+		enabled := entry.DisabledBy == nil
+		automation.Enabled = &enabled
+		visible := entry.HiddenBy == nil
+		automation.Visible = &visible
 	}
 	return &automation, nil
 }
@@ -230,7 +236,7 @@ func (c *Client) CreateAutomation(ctx context.Context, a Automation) (*Automatio
 	}
 
 	resp.Body.Close()
-	if err := c.setAutomationAreaID(ctx, a.ID, a.AreaID); err != nil {
+	if err := c.applyAutomationEntityState(ctx, a.ID, a.AreaID, a.Enabled, a.Visible); err != nil {
 		return nil, err
 	}
 	return c.GetAutomation(ctx, a.ID)
@@ -252,13 +258,13 @@ func (c *Client) UpdateAutomation(ctx context.Context, a Automation) (*Automatio
 		return nil, fmt.Errorf("unexpected status %d updating automation", resp.StatusCode)
 	}
 
-	if err := c.setAutomationAreaID(ctx, a.ID, a.AreaID); err != nil {
+	if err := c.applyAutomationEntityState(ctx, a.ID, a.AreaID, a.Enabled, a.Visible); err != nil {
 		return nil, err
 	}
 	return c.GetAutomation(ctx, a.ID)
 }
 
-func (c *Client) setAutomationAreaID(ctx context.Context, automationID string, areaID *string) error {
+func (c *Client) applyAutomationEntityState(ctx context.Context, automationID string, areaID *string, enabled, visible *bool) error {
 	entry, err := c.GetEntityByUniqueID(ctx, automationID)
 	if err != nil {
 		return fmt.Errorf("finding automation entity: %w", err)
@@ -266,10 +272,26 @@ func (c *Client) setAutomationAreaID(ctx context.Context, automationID string, a
 	if entry == nil {
 		return nil
 	}
-	_, err = c.UpdateEntity(ctx, EntityUpdate{
-		EntityID: entry.EntityID,
-		AreaID:   areaID,
-	})
+	update := EntityUpdate{
+		EntityID:  entry.EntityID,
+		AreaID:    areaID,
+		SetAreaID: true,
+	}
+	if enabled != nil {
+		update.SetDisabledBy = true
+		if !*enabled {
+			s := "user"
+			update.DisabledBy = &s
+		}
+	}
+	if visible != nil {
+		update.SetHiddenBy = true
+		if !*visible {
+			s := "user"
+			update.HiddenBy = &s
+		}
+	}
+	_, err = c.UpdateEntity(ctx, update)
 	return err
 }
 

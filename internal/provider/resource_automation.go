@@ -8,6 +8,7 @@ import (
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -44,6 +45,22 @@ func (r *AutomationResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"condition": schema.StringAttribute{Optional: true, Computed: true, Description: "JSON-encoded list of conditions."},
 			"action":    schema.StringAttribute{Required: true, Description: "JSON-encoded list of actions."},
 			"area_id":   schema.StringAttribute{Optional: true, Description: "Area to assign this automation to."},
+			"enabled": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether the automation is enabled. When false, sets disabled_by to \"user\".",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"visible": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether the automation is visible. When false, sets hidden_by to \"user\".",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -157,6 +174,8 @@ func automationToModel(a *client.Automation) AutomationModel {
 		Condition:   types.StringValue(rawToString(a.Condition, "[]")),
 		Action:      types.StringValue(rawToString(a.Action, "[]")),
 		AreaID:      stringPtrValue(a.AreaID),
+		Enabled:     boolPtrValue(a.Enabled),
+		Visible:     boolPtrValue(a.Visible),
 	}
 }
 
@@ -185,7 +204,24 @@ func modelToAutomation(m AutomationModel) (*client.Automation, error) {
 		Condition:   condition,
 		Action:      action,
 		AreaID:      valueOrNil(m.AreaID),
+		Enabled:     boolValueOrNil(m.Enabled),
+		Visible:     boolValueOrNil(m.Visible),
 	}, nil
+}
+
+func boolPtrValue(b *bool) types.Bool {
+	if b == nil {
+		return types.BoolNull()
+	}
+	return types.BoolValue(*b)
+}
+
+func boolValueOrNil(b types.Bool) *bool {
+	if b.IsNull() || b.IsUnknown() {
+		return nil
+	}
+	v := b.ValueBool()
+	return &v
 }
 
 func rawToString(raw json.RawMessage, fallback string) string {

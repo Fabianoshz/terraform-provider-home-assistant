@@ -30,6 +30,8 @@ type AutomationModel struct {
 	Condition   types.String `tfsdk:"condition"`
 	Action      types.String `tfsdk:"action"`
 	AreaID      types.String `tfsdk:"area_id"`
+	Enabled     types.Bool   `tfsdk:"enabled"`
+	Visible     types.Bool   `tfsdk:"visible"`
 }
 
 type AutomationsDataSourceModel struct {
@@ -56,6 +58,8 @@ func (d *AutomationsDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 						"condition": schema.StringAttribute{Computed: true, Description: "JSON-encoded conditions."},
 						"action":    schema.StringAttribute{Computed: true, Description: "JSON-encoded actions."},
 						"area_id":   schema.StringAttribute{Computed: true, Description: "Area assigned to this automation."},
+						"enabled":   schema.BoolAttribute{Computed: true, Description: "Whether the automation is enabled."},
+						"visible":   schema.BoolAttribute{Computed: true, Description: "Whether the automation is visible."},
 					},
 				},
 			},
