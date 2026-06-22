@@ -22,16 +22,18 @@ func NewAutomationsDataSource() datasource.DataSource {
 
 // AutomationModel is shared between the resource and data source.
 type AutomationModel struct {
-	ID          types.String `tfsdk:"id"`
-	Alias       types.String `tfsdk:"alias"`
-	Description types.String `tfsdk:"description"`
-	Mode        types.String `tfsdk:"mode"`
-	Trigger     types.String `tfsdk:"trigger"`
-	Condition   types.String `tfsdk:"condition"`
-	Action      types.String `tfsdk:"action"`
-	AreaID      types.String `tfsdk:"area_id"`
-	Enabled     types.Bool   `tfsdk:"enabled"`
-	Visible     types.Bool   `tfsdk:"visible"`
+	ID             types.String `tfsdk:"id"`
+	Alias          types.String `tfsdk:"alias"`
+	Description    types.String `tfsdk:"description"`
+	Mode           types.String `tfsdk:"mode"`
+	Trigger        types.String `tfsdk:"trigger"`
+	Condition      types.String `tfsdk:"condition"`
+	Action         types.String `tfsdk:"action"`
+	BlueprintPath  types.String `tfsdk:"blueprint_path"`
+	BlueprintInput types.String `tfsdk:"blueprint_input"`
+	AreaID         types.String `tfsdk:"area_id"`
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	Visible        types.Bool   `tfsdk:"visible"`
 }
 
 type AutomationsDataSourceModel struct {
@@ -54,10 +56,12 @@ func (d *AutomationsDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 						"alias":       schema.StringAttribute{Computed: true, Description: "Display name."},
 						"description": schema.StringAttribute{Computed: true, Description: "Description."},
 						"mode":        schema.StringAttribute{Computed: true, Description: "Automation mode."},
-						"trigger":   schema.StringAttribute{Computed: true, Description: "JSON-encoded triggers."},
-						"condition": schema.StringAttribute{Computed: true, Description: "JSON-encoded conditions."},
-						"action":    schema.StringAttribute{Computed: true, Description: "JSON-encoded actions."},
-						"area_id":   schema.StringAttribute{Computed: true, Description: "Area assigned to this automation."},
+						"trigger":         schema.StringAttribute{Computed: true, Description: "JSON-encoded triggers."},
+						"condition":       schema.StringAttribute{Computed: true, Description: "JSON-encoded conditions."},
+						"action":          schema.StringAttribute{Computed: true, Description: "JSON-encoded actions."},
+						"blueprint_path":  schema.StringAttribute{Computed: true, Description: "Path of the blueprint this automation is based on, if any."},
+						"blueprint_input": schema.StringAttribute{Computed: true, Description: "JSON-encoded blueprint inputs, if this automation uses a blueprint."},
+						"area_id":         schema.StringAttribute{Computed: true, Description: "Area assigned to this automation."},
 						"enabled":   schema.BoolAttribute{Computed: true, Description: "Whether the automation is enabled."},
 						"visible":   schema.BoolAttribute{Computed: true, Description: "Whether the automation is visible."},
 					},

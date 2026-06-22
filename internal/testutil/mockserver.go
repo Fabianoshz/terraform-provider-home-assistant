@@ -54,13 +54,14 @@ type MockArea struct {
 }
 
 type MockAutomation struct {
-	ID          string          `json:"id"`
-	Alias       string          `json:"alias"`
-	Description string          `json:"description"`
-	Mode        string          `json:"mode"`
-	Trigger     json.RawMessage `json:"triggers"`
-	Condition   json.RawMessage `json:"conditions"`
-	Action      json.RawMessage `json:"actions"`
+	ID           string          `json:"id"`
+	Alias        string          `json:"alias"`
+	Description  string          `json:"description"`
+	Mode         string          `json:"mode"`
+	Trigger      json.RawMessage `json:"triggers,omitempty"`
+	Condition    json.RawMessage `json:"conditions,omitempty"`
+	Action       json.RawMessage `json:"actions,omitempty"`
+	UseBlueprint json.RawMessage `json:"use_blueprint,omitempty"`
 }
 
 type MockFloor struct {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -14,7 +15,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ resource.Resource = &AutomationResource{}
+var (
+	_ resource.Resource                   = &AutomationResource{}
+	_ resource.ResourceWithValidateConfig = &AutomationResource{}
+)
 
 type AutomationResource struct {
 	client *client.Client
@@ -41,9 +45,17 @@ func (r *AutomationResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"alias":       schema.StringAttribute{Required: true, Description: "Display name of the automation."},
 			"description": schema.StringAttribute{Optional: true, Computed: true, Description: "Description of what the automation does."},
 			"mode":        schema.StringAttribute{Optional: true, Computed: true, Description: "Automation mode: single, restart, queued, or parallel. Defaults to single."},
-			"trigger":   schema.StringAttribute{Required: true, Description: "JSON-encoded list of triggers."},
-			"condition": schema.StringAttribute{Optional: true, Computed: true, Description: "JSON-encoded list of conditions."},
-			"action":    schema.StringAttribute{Required: true, Description: "JSON-encoded list of actions."},
+			"trigger":   schema.StringAttribute{Optional: true, Description: "JSON-encoded list of triggers. Required unless blueprint_path is set; conflicts with blueprint_path."},
+			"condition": schema.StringAttribute{Optional: true, Computed: true, Description: "JSON-encoded list of conditions. Conflicts with blueprint_path."},
+			"action":    schema.StringAttribute{Optional: true, Description: "JSON-encoded list of actions. Required unless blueprint_path is set; conflicts with blueprint_path."},
+			"blueprint_path": schema.StringAttribute{
+				Optional:    true,
+				Description: "Path of the blueprint to base this automation on (relative to the automation blueprints directory, e.g. \"my_blueprint.yaml\"). Mutually exclusive with trigger/condition/action.",
+			},
+			"blueprint_input": schema.StringAttribute{
+				Optional:    true,
+				Description: "JSON-encoded object mapping blueprint input names to values. Requires blueprint_path.",
+			},
 			"area_id":   schema.StringAttribute{Optional: true, Description: "Area to assign this automation to."},
 			"enabled": schema.BoolAttribute{
 				Optional:    true,
@@ -75,6 +87,39 @@ func (r *AutomationResource) Configure(_ context.Context, req resource.Configure
 		return
 	}
 	r.client = c
+}
+
+func (r *AutomationResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data AutomationModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	usingBlueprint := !data.BlueprintPath.IsNull() && !data.BlueprintPath.IsUnknown()
+
+	if usingBlueprint {
+		if !data.Trigger.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("trigger"), "Conflicting configuration", "trigger cannot be set when blueprint_path is used.")
+		}
+		if !data.Condition.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("condition"), "Conflicting configuration", "condition cannot be set when blueprint_path is used.")
+		}
+		if !data.Action.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("action"), "Conflicting configuration", "action cannot be set when blueprint_path is used.")
+		}
+		return
+	}
+
+	if !data.BlueprintInput.IsNull() {
+		resp.Diagnostics.AddAttributeError(path.Root("blueprint_input"), "Missing blueprint_path", "blueprint_input requires blueprint_path to be set.")
+	}
+	if data.Trigger.IsNull() {
+		resp.Diagnostics.AddAttributeError(path.Root("trigger"), "Missing required argument", "trigger is required unless blueprint_path is set.")
+	}
+	if data.Action.IsNull() {
+		resp.Diagnostics.AddAttributeError(path.Root("action"), "Missing required argument", "action is required unless blueprint_path is set.")
+	}
 }
 
 func (r *AutomationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -165,21 +210,60 @@ func automationToModel(a *client.Automation) AutomationModel {
 	if mode == "" {
 		mode = "single"
 	}
-	return AutomationModel{
-		ID:          types.StringValue(a.ID),
-		Alias:       types.StringValue(a.Alias),
-		Description: types.StringValue(a.Description),
-		Mode:        types.StringValue(mode),
-		Trigger:     types.StringValue(rawToString(a.Trigger, "[]")),
-		Condition:   types.StringValue(rawToString(a.Condition, "[]")),
-		Action:      types.StringValue(rawToString(a.Action, "[]")),
-		AreaID:      stringPtrValue(a.AreaID),
-		Enabled:     boolPtrValue(a.Enabled),
-		Visible:     boolPtrValue(a.Visible),
+	m := AutomationModel{
+		ID:             types.StringValue(a.ID),
+		Alias:          types.StringValue(a.Alias),
+		Description:    types.StringValue(a.Description),
+		Mode:           types.StringValue(mode),
+		Trigger:        types.StringNull(),
+		Condition:      types.StringNull(),
+		Action:         types.StringNull(),
+		BlueprintPath:  types.StringNull(),
+		BlueprintInput: types.StringNull(),
+		AreaID:         stringPtrValue(a.AreaID),
+		Enabled:        boolPtrValue(a.Enabled),
+		Visible:        boolPtrValue(a.Visible),
 	}
+	if a.UseBlueprint != nil {
+		m.BlueprintPath = types.StringValue(a.UseBlueprint.Path)
+		if len(a.UseBlueprint.Input) > 0 {
+			m.BlueprintInput = types.StringValue(normalizeJSON(a.UseBlueprint.Input))
+		}
+	} else {
+		m.Trigger = types.StringValue(rawToString(a.Trigger, "[]"))
+		m.Condition = types.StringValue(rawToString(a.Condition, "[]"))
+		m.Action = types.StringValue(rawToString(a.Action, "[]"))
+	}
+	return m
 }
 
 func modelToAutomation(m AutomationModel) (*client.Automation, error) {
+	mode := m.Mode.ValueString()
+	if mode == "" {
+		mode = "single"
+	}
+	a := &client.Automation{
+		Alias:       m.Alias.ValueString(),
+		Description: m.Description.ValueString(),
+		Mode:        mode,
+		AreaID:      valueOrNil(m.AreaID),
+		Enabled:     boolValueOrNil(m.Enabled),
+		Visible:     boolValueOrNil(m.Visible),
+	}
+
+	if !m.BlueprintPath.IsNull() && !m.BlueprintPath.IsUnknown() {
+		use := &client.UseBlueprint{Path: m.BlueprintPath.ValueString()}
+		if !m.BlueprintInput.IsNull() && m.BlueprintInput.ValueString() != "" {
+			input, err := parseRawJSON(m.BlueprintInput.ValueString(), "blueprint_input")
+			if err != nil {
+				return nil, err
+			}
+			use.Input = input
+		}
+		a.UseBlueprint = use
+		return a, nil
+	}
+
 	trigger, err := parseRawJSON(m.Trigger.ValueString(), "trigger")
 	if err != nil {
 		return nil, err
@@ -192,21 +276,22 @@ func modelToAutomation(m AutomationModel) (*client.Automation, error) {
 	if err != nil {
 		return nil, err
 	}
-	mode := m.Mode.ValueString()
-	if mode == "" {
-		mode = "single"
+	a.Trigger = trigger
+	a.Condition = condition
+	a.Action = action
+	return a, nil
+}
+
+func normalizeJSON(raw json.RawMessage) string {
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return string(raw)
 	}
-	return &client.Automation{
-		Alias:       m.Alias.ValueString(),
-		Description: m.Description.ValueString(),
-		Mode:        mode,
-		Trigger:     trigger,
-		Condition:   condition,
-		Action:      action,
-		AreaID:      valueOrNil(m.AreaID),
-		Enabled:     boolValueOrNil(m.Enabled),
-		Visible:     boolValueOrNil(m.Visible),
-	}, nil
+	b, err := json.Marshal(v)
+	if err != nil {
+		return string(raw)
+	}
+	return string(b)
 }
 
 func boolPtrValue(b *bool) types.Bool {

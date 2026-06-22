@@ -152,16 +152,22 @@ func (c *Client) restDo(ctx context.Context, method, path string, body []byte) (
 }
 
 type Automation struct {
-	ID          string          `json:"id"`
-	Alias       string          `json:"alias"`
-	Description string          `json:"description"`
-	Mode        string          `json:"mode"`
-	Trigger     json.RawMessage `json:"triggers"`
-	Condition   json.RawMessage `json:"conditions"`
-	Action      json.RawMessage `json:"actions"`
-	AreaID      *string         `json:"-"`
-	Enabled     *bool           `json:"-"`
-	Visible     *bool           `json:"-"`
+	ID           string          `json:"id"`
+	Alias        string          `json:"alias"`
+	Description  string          `json:"description"`
+	Mode         string          `json:"mode"`
+	Trigger      json.RawMessage `json:"triggers,omitempty"`
+	Condition    json.RawMessage `json:"conditions,omitempty"`
+	Action       json.RawMessage `json:"actions,omitempty"`
+	UseBlueprint *UseBlueprint   `json:"use_blueprint,omitempty"`
+	AreaID       *string         `json:"-"`
+	Enabled      *bool           `json:"-"`
+	Visible      *bool           `json:"-"`
+}
+
+type UseBlueprint struct {
+	Path  string          `json:"path"`
+	Input json.RawMessage `json:"input,omitempty"`
 }
 
 func (c *Client) GetAutomations(ctx context.Context) ([]Automation, error) {

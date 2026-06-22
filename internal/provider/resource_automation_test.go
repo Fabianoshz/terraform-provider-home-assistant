@@ -2,6 +2,7 @@ package provider_test
 
 import (
 	"encoding/json"
+	"regexp"
 	"testing"
 
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/testutil"
@@ -82,6 +83,75 @@ resource "homeassistant_automation" "motion_lights" {
 }
 `,
 				Check: resource.TestCheckResourceAttr("homeassistant_automation.motion_lights", "alias", "New Alias"),
+			},
+		},
+	})
+}
+
+func TestAutomationResource_useBlueprint(t *testing.T) {
+	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{Token: "test-token"})
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig(srv.URL, "test-token") + `
+resource "homeassistant_automation" "from_blueprint" {
+  alias           = "Motion Light From Blueprint"
+  blueprint_path  = "motion_light.yaml"
+  blueprint_input = jsonencode({
+    motion_entity = "binary_sensor.hallway"
+    light_target  = { entity_id = "light.hallway" }
+  })
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("homeassistant_automation.from_blueprint", "id"),
+					resource.TestCheckResourceAttr("homeassistant_automation.from_blueprint", "alias", "Motion Light From Blueprint"),
+					resource.TestCheckResourceAttr("homeassistant_automation.from_blueprint", "blueprint_path", "motion_light.yaml"),
+					resource.TestCheckResourceAttr("homeassistant_automation.from_blueprint", "blueprint_input", `{"light_target":{"entity_id":"light.hallway"},"motion_entity":"binary_sensor.hallway"}`),
+					resource.TestCheckNoResourceAttr("homeassistant_automation.from_blueprint", "trigger"),
+					resource.TestCheckNoResourceAttr("homeassistant_automation.from_blueprint", "action"),
+				),
+			},
+		},
+	})
+}
+
+func TestAutomationResource_blueprintConflictsWithTrigger(t *testing.T) {
+	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{Token: "test-token"})
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig(srv.URL, "test-token") + `
+resource "homeassistant_automation" "bad" {
+  alias          = "Bad"
+  blueprint_path = "motion_light.yaml"
+  trigger        = jsonencode([{platform = "state", entity_id = "binary_sensor.motion"}])
+}
+`,
+				ExpectError: regexp.MustCompile(`Conflicting configuration`),
+			},
+		},
+	})
+}
+
+func TestAutomationResource_requiresTriggerWithoutBlueprint(t *testing.T) {
+	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{Token: "test-token"})
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig(srv.URL, "test-token") + `
+resource "homeassistant_automation" "bad" {
+  alias  = "Bad"
+  action = jsonencode([{service = "light.turn_on"}])
+}
+`,
+				ExpectError: regexp.MustCompile(`Missing required argument`),
 			},
 		},
 	})
