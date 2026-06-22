@@ -104,6 +104,7 @@ func (p *HomeAssistantProvider) Resources(_ context.Context) []func() resource.R
 	return []func() resource.Resource{
 		NewAreaResource,
 		NewAutomationResource,
+		NewBlueprintResource,
 		NewDeviceResource,
 		NewEntityResource,
 		NewFloorResource,

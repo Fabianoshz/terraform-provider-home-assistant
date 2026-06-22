@@ -308,6 +308,105 @@ func (c *Client) DeleteAutomation(ctx context.Context, id string) error {
 	return nil
 }
 
+type Blueprint struct {
+	Domain    string
+	Path      string
+	YAML      string
+	SourceURL *string
+}
+
+type BlueprintMetadata struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Domain      string `json:"domain"`
+	SourceURL   string `json:"source_url"`
+}
+
+func (c *Client) ListBlueprints(ctx context.Context, domain string) (map[string]BlueprintMetadata, error) {
+	result, err := c.blueprintCommand(ctx, map[string]any{
+		"type":   "blueprint/list",
+		"domain": domain,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]struct {
+		Metadata BlueprintMetadata `json:"metadata"`
+		Error    string            `json:"error"`
+	}
+	if err := json.Unmarshal(result, &raw); err != nil {
+		return nil, fmt.Errorf("decoding blueprints: %w", err)
+	}
+	out := make(map[string]BlueprintMetadata, len(raw))
+	for path, v := range raw {
+		out[path] = v.Metadata
+	}
+	return out, nil
+}
+
+func (c *Client) GetBlueprint(ctx context.Context, domain, path string) (*BlueprintMetadata, error) {
+	blueprints, err := c.ListBlueprints(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+	if meta, ok := blueprints[path]; ok {
+		return &meta, nil
+	}
+	return nil, nil
+}
+
+func (c *Client) SaveBlueprint(ctx context.Context, b Blueprint, allowOverride bool) error {
+	fields := map[string]any{
+		"type":           "blueprint/save",
+		"domain":         b.Domain,
+		"path":           b.Path,
+		"yaml":           b.YAML,
+		"allow_override": allowOverride,
+	}
+	if b.SourceURL != nil {
+		fields["source_url"] = *b.SourceURL
+	}
+	_, err := c.blueprintCommand(ctx, fields)
+	return err
+}
+
+func (c *Client) DeleteBlueprint(ctx context.Context, domain, path string) error {
+	_, err := c.blueprintCommand(ctx, map[string]any{
+		"type":   "blueprint/delete",
+		"domain": domain,
+		"path":   path,
+	})
+	return err
+}
+
+func (c *Client) blueprintCommand(ctx context.Context, fields map[string]any) (json.RawMessage, error) {
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	msg := map[string]any{"id": 1}
+	for k, v := range fields {
+		msg[k] = v
+	}
+	if err := conn.WriteJSON(msg); err != nil {
+		return nil, fmt.Errorf("sending blueprint command: %w", err)
+	}
+
+	var result wsResult
+	if err := conn.ReadJSON(&result); err != nil {
+		return nil, fmt.Errorf("reading blueprint response: %w", err)
+	}
+	if !result.Success {
+		if result.Error != nil {
+			return nil, fmt.Errorf("blueprint command error %s: %s", result.Error.Code, result.Error.Message)
+		}
+		return nil, fmt.Errorf("blueprint command failed")
+	}
+	return result.Result, nil
+}
+
 func (c *Client) GetStates(ctx context.Context) ([]EntityState, error) {
 	resp, err := c.restDo(ctx, http.MethodGet, "/api/states", nil)
 	if err != nil {

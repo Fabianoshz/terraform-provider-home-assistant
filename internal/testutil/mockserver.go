@@ -70,10 +70,18 @@ type MockFloor struct {
 	Icon    *string `json:"icon"`
 }
 
+type MockBlueprint struct {
+	Domain    string
+	Path      string
+	YAML      string
+	SourceURL *string
+}
+
 type MockServerConfig struct {
 	Token          string
 	Areas          []MockArea
 	Automations    []MockAutomation
+	Blueprints     []MockBlueprint
 	Devices        []MockDevice
 	EntityRegistry []MockEntityRegistry
 	EntityStates   []MockEntityState
@@ -216,6 +224,47 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 				for i, f := range cfg.Floors {
 					if f.FloorID == floorID {
 						cfg.Floors = append(cfg.Floors[:i], cfg.Floors[i+1:]...)
+						break
+					}
+				}
+				payload = map[string]any{}
+			case "blueprint/list":
+				domain, _ := cmd["domain"].(string)
+				result := map[string]any{}
+				for _, b := range cfg.Blueprints {
+					if b.Domain == domain {
+						result[b.Path] = map[string]any{
+							"metadata": map[string]any{"name": b.Path, "domain": domain},
+						}
+					}
+				}
+				payload = result
+			case "blueprint/save":
+				domain, _ := cmd["domain"].(string)
+				path, _ := cmd["path"].(string)
+				yamlStr, _ := cmd["yaml"].(string)
+				bp := MockBlueprint{Domain: domain, Path: path, YAML: yamlStr}
+				if s, ok := cmd["source_url"].(string); ok {
+					bp.SourceURL = Ptr(s)
+				}
+				overrides := false
+				for i, b := range cfg.Blueprints {
+					if b.Domain == domain && b.Path == path {
+						cfg.Blueprints[i] = bp
+						overrides = true
+						break
+					}
+				}
+				if !overrides {
+					cfg.Blueprints = append(cfg.Blueprints, bp)
+				}
+				payload = map[string]any{"overrides_existing": overrides}
+			case "blueprint/delete":
+				domain, _ := cmd["domain"].(string)
+				path, _ := cmd["path"].(string)
+				for i, b := range cfg.Blueprints {
+					if b.Domain == domain && b.Path == path {
+						cfg.Blueprints = append(cfg.Blueprints[:i], cfg.Blueprints[i+1:]...)
 						break
 					}
 				}
