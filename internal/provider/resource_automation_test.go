@@ -118,6 +118,40 @@ resource "homeassistant_automation" "from_blueprint" {
 	})
 }
 
+// Regression: when wrapped in a module (or referencing a computed value),
+// blueprint_path/blueprint_input arrive Unknown during ValidateConfig. The
+// cross-field rules must not fire on unknown values. Here blueprint_path is an
+// unknown reference to another resource's computed id while blueprint_input is
+// a known literal — the previous logic falsely errored "requires blueprint_path".
+func TestAutomationResource_useBlueprintUnknownAtValidate(t *testing.T) {
+	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{Token: "test-token"})
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig(srv.URL, "test-token") + `
+resource "homeassistant_blueprint" "bp" {
+  domain    = "automation"
+  path      = "motion_light.yaml"
+  blueprint = "blueprint:\n  name: Motion\n  domain: automation\n"
+}
+
+resource "homeassistant_automation" "from_blueprint" {
+  alias           = "Motion From Blueprint"
+  blueprint_path  = homeassistant_blueprint.bp.id
+  blueprint_input = jsonencode({ motion_entity = "binary_sensor.hallway" })
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("homeassistant_automation.from_blueprint", "blueprint_path"),
+					resource.TestCheckResourceAttr("homeassistant_automation.from_blueprint", "blueprint_input", `{"motion_entity":"binary_sensor.hallway"}`),
+				),
+			},
+		},
+	})
+}
+
 func TestAutomationResource_blueprintConflictsWithTrigger(t *testing.T) {
 	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{Token: "test-token"})
 

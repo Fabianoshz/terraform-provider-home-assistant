@@ -96,7 +96,15 @@ func (r *AutomationResource) ValidateConfig(ctx context.Context, req resource.Va
 		return
 	}
 
-	usingBlueprint := !data.BlueprintPath.IsNull() && !data.BlueprintPath.IsUnknown()
+	// When the resource is wrapped in a module, these attributes can be Unknown
+	// at validate time (variables aren't resolved yet). Cross-field rules can't
+	// be evaluated reliably until the values are known, so defer to plan/apply.
+	if data.BlueprintPath.IsUnknown() || data.BlueprintInput.IsUnknown() ||
+		data.Trigger.IsUnknown() || data.Action.IsUnknown() || data.Condition.IsUnknown() {
+		return
+	}
+
+	usingBlueprint := !data.BlueprintPath.IsNull()
 
 	if usingBlueprint {
 		if !data.Trigger.IsNull() {
