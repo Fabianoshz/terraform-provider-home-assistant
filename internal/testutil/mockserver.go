@@ -64,6 +64,24 @@ type MockAutomation struct {
 	UseBlueprint json.RawMessage `json:"use_blueprint,omitempty"`
 }
 
+type MockScene struct {
+	ID       string          `json:"id"`
+	Name     string          `json:"name"`
+	Icon     string          `json:"icon,omitempty"`
+	Entities json.RawMessage `json:"entities,omitempty"`
+}
+
+type MockScript struct {
+	ObjectID     string          `json:"-"`
+	Alias        string          `json:"alias"`
+	Description  string          `json:"description,omitempty"`
+	Icon         string          `json:"icon,omitempty"`
+	Mode         string          `json:"mode,omitempty"`
+	Sequence     json.RawMessage `json:"sequence,omitempty"`
+	Fields       json.RawMessage `json:"fields,omitempty"`
+	UseBlueprint json.RawMessage `json:"use_blueprint,omitempty"`
+}
+
 type MockFloor struct {
 	FloorID string  `json:"floor_id"`
 	Name    string  `json:"name"`
@@ -87,6 +105,8 @@ type MockServerConfig struct {
 	EntityRegistry []MockEntityRegistry
 	EntityStates   []MockEntityState
 	Floors         []MockFloor
+	Scenes         []MockScene
+	Scripts        []MockScript
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
@@ -429,6 +449,90 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 			a.ID = fmt.Sprintf("automation_%d", len(cfg.Automations)+1)
 			cfg.Automations = append(cfg.Automations, a)
 			json.NewEncoder(w).Encode(a)
+		}
+	})
+
+	mux.HandleFunc("/api/config/scene/config/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+cfg.Token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/config/scene/config/")
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.Method {
+		case http.MethodGet:
+			for _, s := range cfg.Scenes {
+				if s.ID == id {
+					json.NewEncoder(w).Encode(s)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPost:
+			var s MockScene
+			json.NewDecoder(r.Body).Decode(&s)
+			s.ID = id
+			for i, existing := range cfg.Scenes {
+				if existing.ID == id {
+					cfg.Scenes[i] = s
+					json.NewEncoder(w).Encode(s)
+					return
+				}
+			}
+			cfg.Scenes = append(cfg.Scenes, s)
+			json.NewEncoder(w).Encode(s)
+		case http.MethodDelete:
+			for i, s := range cfg.Scenes {
+				if s.ID == id {
+					cfg.Scenes = append(cfg.Scenes[:i], cfg.Scenes[i+1:]...)
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	mux.HandleFunc("/api/config/script/config/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+cfg.Token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		objectID := strings.TrimPrefix(r.URL.Path, "/api/config/script/config/")
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.Method {
+		case http.MethodGet:
+			for _, s := range cfg.Scripts {
+				if s.ObjectID == objectID {
+					json.NewEncoder(w).Encode(s)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPost:
+			var s MockScript
+			json.NewDecoder(r.Body).Decode(&s)
+			s.ObjectID = objectID
+			for i, existing := range cfg.Scripts {
+				if existing.ObjectID == objectID {
+					cfg.Scripts[i] = s
+					json.NewEncoder(w).Encode(s)
+					return
+				}
+			}
+			cfg.Scripts = append(cfg.Scripts, s)
+			json.NewEncoder(w).Encode(s)
+		case http.MethodDelete:
+			for i, s := range cfg.Scripts {
+				if s.ObjectID == objectID {
+					cfg.Scripts = append(cfg.Scripts[:i], cfg.Scripts[i+1:]...)
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
 		}
 	})
 

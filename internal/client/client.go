@@ -271,9 +271,17 @@ func (c *Client) UpdateAutomation(ctx context.Context, a Automation) (*Automatio
 }
 
 func (c *Client) applyAutomationEntityState(ctx context.Context, automationID string, areaID *string, enabled, visible *bool) error {
-	entry, err := c.GetEntityByUniqueID(ctx, automationID)
+	return c.applyEntityRegistryState(ctx, automationID, areaID, enabled, visible)
+}
+
+// applyEntityRegistryState updates the area, enabled and visible flags on the
+// entity registry entry whose unique_id matches uniqueID. Config-based resources
+// (automations, scenes, scripts) register an entity keyed by their config id, so
+// these registry-only attributes are applied separately from the config itself.
+func (c *Client) applyEntityRegistryState(ctx context.Context, uniqueID string, areaID *string, enabled, visible *bool) error {
+	entry, err := c.GetEntityByUniqueID(ctx, uniqueID)
 	if err != nil {
-		return fmt.Errorf("finding automation entity: %w", err)
+		return fmt.Errorf("finding entity: %w", err)
 	}
 	if entry == nil {
 		return nil
@@ -413,6 +421,222 @@ func (c *Client) blueprintCommand(ctx context.Context, fields map[string]any) (j
 	return result.Result, nil
 }
 
+type Scene struct {
+	ID       string          `json:"id"`
+	Name     string          `json:"name"`
+	Icon     string          `json:"icon,omitempty"`
+	Entities json.RawMessage `json:"entities,omitempty"`
+	AreaID   *string         `json:"-"`
+	Enabled  *bool           `json:"-"`
+	Visible  *bool           `json:"-"`
+}
+
+func (c *Client) GetScene(ctx context.Context, id string) (*Scene, error) {
+	resp, err := c.restDo(ctx, http.MethodGet, "/api/config/scene/config/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching scene: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d fetching scene", resp.StatusCode)
+	}
+
+	var scene Scene
+	if err := json.NewDecoder(resp.Body).Decode(&scene); err != nil {
+		return nil, fmt.Errorf("decoding scene: %w", err)
+	}
+
+	entry, err := c.GetEntityByUniqueID(ctx, scene.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching scene entity registry: %w", err)
+	}
+	if entry != nil {
+		scene.AreaID = entry.AreaID
+		enabled := entry.DisabledBy == nil
+		scene.Enabled = &enabled
+		visible := entry.HiddenBy == nil
+		scene.Visible = &visible
+	}
+	return &scene, nil
+}
+
+func (c *Client) CreateScene(ctx context.Context, s Scene) (*Scene, error) {
+	if s.ID == "" {
+		s.ID = fmt.Sprintf("%d", time.Now().UnixMilli())
+	}
+
+	body, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("encoding scene: %w", err)
+	}
+
+	resp, err := c.restDo(ctx, http.MethodPost, "/api/config/scene/config/"+s.ID, body)
+	if err != nil {
+		return nil, fmt.Errorf("creating scene: %w", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("unexpected status %d creating scene", resp.StatusCode)
+	}
+
+	if err := c.applyEntityRegistryState(ctx, s.ID, s.AreaID, s.Enabled, s.Visible); err != nil {
+		return nil, err
+	}
+	return c.GetScene(ctx, s.ID)
+}
+
+func (c *Client) UpdateScene(ctx context.Context, s Scene) (*Scene, error) {
+	body, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("encoding scene: %w", err)
+	}
+
+	resp, err := c.restDo(ctx, http.MethodPost, "/api/config/scene/config/"+s.ID, body)
+	if err != nil {
+		return nil, fmt.Errorf("updating scene: %w", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d updating scene", resp.StatusCode)
+	}
+
+	if err := c.applyEntityRegistryState(ctx, s.ID, s.AreaID, s.Enabled, s.Visible); err != nil {
+		return nil, err
+	}
+	return c.GetScene(ctx, s.ID)
+}
+
+func (c *Client) DeleteScene(ctx context.Context, id string) error {
+	resp, err := c.restDo(ctx, http.MethodDelete, "/api/config/scene/config/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("deleting scene: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status %d deleting scene", resp.StatusCode)
+	}
+	return nil
+}
+
+// Script configs are keyed by their object_id, which becomes the entity suffix
+// (script.<object_id>). The object_id is carried in the request path rather than
+// the body, so it is excluded from JSON marshalling.
+type Script struct {
+	ObjectID     string          `json:"-"`
+	Alias        string          `json:"alias"`
+	Description  string          `json:"description,omitempty"`
+	Icon         string          `json:"icon,omitempty"`
+	Mode         string          `json:"mode,omitempty"`
+	Sequence     json.RawMessage `json:"sequence,omitempty"`
+	Fields       json.RawMessage `json:"fields,omitempty"`
+	UseBlueprint *UseBlueprint   `json:"use_blueprint,omitempty"`
+	AreaID       *string         `json:"-"`
+	Enabled      *bool           `json:"-"`
+	Visible      *bool           `json:"-"`
+}
+
+func (c *Client) GetScript(ctx context.Context, objectID string) (*Script, error) {
+	resp, err := c.restDo(ctx, http.MethodGet, "/api/config/script/config/"+objectID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching script: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d fetching script", resp.StatusCode)
+	}
+
+	var script Script
+	if err := json.NewDecoder(resp.Body).Decode(&script); err != nil {
+		return nil, fmt.Errorf("decoding script: %w", err)
+	}
+	script.ObjectID = objectID
+
+	entry, err := c.GetEntityByUniqueID(ctx, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching script entity registry: %w", err)
+	}
+	if entry != nil {
+		script.AreaID = entry.AreaID
+		enabled := entry.DisabledBy == nil
+		script.Enabled = &enabled
+		visible := entry.HiddenBy == nil
+		script.Visible = &visible
+	}
+	return &script, nil
+}
+
+func (c *Client) CreateScript(ctx context.Context, s Script) (*Script, error) {
+	if s.ObjectID == "" {
+		s.ObjectID = fmt.Sprintf("%d", time.Now().UnixMilli())
+	}
+
+	body, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("encoding script: %w", err)
+	}
+
+	resp, err := c.restDo(ctx, http.MethodPost, "/api/config/script/config/"+s.ObjectID, body)
+	if err != nil {
+		return nil, fmt.Errorf("creating script: %w", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("unexpected status %d creating script", resp.StatusCode)
+	}
+
+	if err := c.applyEntityRegistryState(ctx, s.ObjectID, s.AreaID, s.Enabled, s.Visible); err != nil {
+		return nil, err
+	}
+	return c.GetScript(ctx, s.ObjectID)
+}
+
+func (c *Client) UpdateScript(ctx context.Context, s Script) (*Script, error) {
+	body, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("encoding script: %w", err)
+	}
+
+	resp, err := c.restDo(ctx, http.MethodPost, "/api/config/script/config/"+s.ObjectID, body)
+	if err != nil {
+		return nil, fmt.Errorf("updating script: %w", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d updating script", resp.StatusCode)
+	}
+
+	if err := c.applyEntityRegistryState(ctx, s.ObjectID, s.AreaID, s.Enabled, s.Visible); err != nil {
+		return nil, err
+	}
+	return c.GetScript(ctx, s.ObjectID)
+}
+
+func (c *Client) DeleteScript(ctx context.Context, objectID string) error {
+	resp, err := c.restDo(ctx, http.MethodDelete, "/api/config/script/config/"+objectID, nil)
+	if err != nil {
+		return fmt.Errorf("deleting script: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status %d deleting script", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) GetStates(ctx context.Context) ([]EntityState, error) {
 	resp, err := c.restDo(ctx, http.MethodGet, "/api/states", nil)
 	if err != nil {
@@ -429,6 +653,95 @@ func (c *Client) GetStates(ctx context.Context) ([]EntityState, error) {
 		return nil, fmt.Errorf("decoding states: %w", err)
 	}
 	return states, nil
+}
+
+// Home Assistant has no list endpoint for scene/script configs (the per-id
+// config endpoints exist, but GET on the collection 404s). These data-source
+// listings are therefore derived from /api/states, which reflects the loaded
+// entities the same way the Home Assistant UI does.
+
+type SceneSummary struct {
+	ID       string
+	EntityID string
+	Name     string
+	Entities []string
+}
+
+func (c *Client) GetScenes(ctx context.Context) ([]SceneSummary, error) {
+	states, err := c.GetStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var scenes []SceneSummary
+	for _, s := range states {
+		if !strings.HasPrefix(s.EntityID, "scene.") {
+			continue
+		}
+		scenes = append(scenes, SceneSummary{
+			ID:       attrString(s.Attributes, "id"),
+			EntityID: s.EntityID,
+			Name:     attrName(s.Attributes, s.EntityID),
+			Entities: attrStringSlice(s.Attributes, "entity_id"),
+		})
+	}
+	return scenes, nil
+}
+
+type ScriptSummary struct {
+	ID       string
+	EntityID string
+	Name     string
+	Mode     string
+	State    string
+}
+
+func (c *Client) GetScripts(ctx context.Context) ([]ScriptSummary, error) {
+	states, err := c.GetStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var scripts []ScriptSummary
+	for _, s := range states {
+		if !strings.HasPrefix(s.EntityID, "script.") {
+			continue
+		}
+		scripts = append(scripts, ScriptSummary{
+			ID:       strings.TrimPrefix(s.EntityID, "script."),
+			EntityID: s.EntityID,
+			Name:     attrName(s.Attributes, s.EntityID),
+			Mode:     attrString(s.Attributes, "mode"),
+			State:    s.State,
+		})
+	}
+	return scripts, nil
+}
+
+func attrString(attrs map[string]any, key string) string {
+	if v, ok := attrs[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func attrName(attrs map[string]any, fallback string) string {
+	if name := attrString(attrs, "friendly_name"); name != "" {
+		return name
+	}
+	return fallback
+}
+
+func attrStringSlice(attrs map[string]any, key string) []string {
+	raw, ok := attrs[key].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 type Area struct {

@@ -97,6 +97,8 @@ func (p *HomeAssistantProvider) DataSources(_ context.Context) []func() datasour
 		NewAutomationsDataSource,
 		NewDevicesDataSource,
 		NewEntitiesDataSource,
+		NewScenesDataSource,
+		NewScriptsDataSource,
 	}
 }
 
@@ -108,5 +110,7 @@ func (p *HomeAssistantProvider) Resources(_ context.Context) []func() resource.R
 		NewDeviceResource,
 		NewEntityResource,
 		NewFloorResource,
+		NewSceneResource,
+		NewScriptResource,
 	}
 }
