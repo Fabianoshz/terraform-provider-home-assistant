@@ -279,7 +279,7 @@ func (c *Client) applyAutomationEntityState(ctx context.Context, automationID st
 // (automations, scenes, scripts) register an entity keyed by their config id, so
 // these registry-only attributes are applied separately from the config itself.
 func (c *Client) applyEntityRegistryState(ctx context.Context, uniqueID string, areaID *string, enabled, visible *bool) error {
-	entry, err := c.GetEntityByUniqueID(ctx, uniqueID)
+	entry, err := c.waitForEntityByUniqueID(ctx, uniqueID)
 	if err != nil {
 		return fmt.Errorf("finding entity: %w", err)
 	}
@@ -978,6 +978,31 @@ func (c *Client) GetEntityByUniqueID(ctx context.Context, uniqueID string) (*Ent
 	for _, e := range entries {
 		if e.UniqueID == uniqueID {
 			return &e, nil
+		}
+	}
+	return nil, nil
+}
+
+// waitForEntityByUniqueID polls the entity registry for the entry whose
+// unique_id matches uniqueID. Config-based resources (automations, scenes,
+// scripts) register their entity asynchronously after the config is written,
+// so immediately after a create the entry may not exist yet. Without this
+// wait, registry-only attributes (area_id, enabled, visible) would be applied
+// to a missing entry and silently dropped, causing a create/read mismatch.
+func (c *Client) waitForEntityByUniqueID(ctx context.Context, uniqueID string) (*EntityRegistryEntry, error) {
+	const attempts = 20
+	for i := 0; i < attempts; i++ {
+		entry, err := c.GetEntityByUniqueID(ctx, uniqueID)
+		if err != nil {
+			return nil, err
+		}
+		if entry != nil {
+			return entry, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 	return nil, nil
