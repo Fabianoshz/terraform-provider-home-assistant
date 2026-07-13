@@ -5,10 +5,12 @@ import (
 	"fmt"
 
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -24,14 +26,17 @@ func NewEntityResource() resource.Resource {
 }
 
 type EntityResourceModel struct {
-	ID       types.String `tfsdk:"id"`
-	DeviceID types.String `tfsdk:"device_id"`
-	EntityID types.String `tfsdk:"entity_id"`
-	Name     types.String `tfsdk:"name"`
-	Icon     types.String `tfsdk:"icon"`
-	AreaID   types.String `tfsdk:"area_id"`
-	Enabled  types.Bool   `tfsdk:"enabled"`
-	Visible  types.Bool   `tfsdk:"visible"`
+	ID        types.String `tfsdk:"id"`
+	DeviceID  types.String `tfsdk:"device_id"`
+	EntityID  types.String `tfsdk:"entity_id"`
+	Name      types.String `tfsdk:"name"`
+	Icon      types.String `tfsdk:"icon"`
+	AreaID    types.String `tfsdk:"area_id"`
+	Enabled   types.Bool   `tfsdk:"enabled"`
+	Visible   types.Bool   `tfsdk:"visible"`
+	Aliases   types.Set    `tfsdk:"aliases"`
+	Labels    types.Set    `tfsdk:"labels"`
+	ExposedTo types.Set    `tfsdk:"exposed_to"`
 }
 
 func (r *EntityResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -102,6 +107,29 @@ func (r *EntityResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"aliases": schema.SetAttribute{
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "Voice-assistant aliases (alternative names) for the entity.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"labels": schema.SetAttribute{
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "Label IDs assigned to the entity.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"exposed_to": schema.SetAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				Description: "Assistants the entity is exposed to (e.g. \"conversation\", \"cloud.alexa\", \"cloud.google_assistant\"). When set, manages the complete exposure set for the entity.",
+			},
 		},
 	}
 }
@@ -139,13 +167,24 @@ func (r *EntityResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	entry, err := r.client.UpdateEntity(ctx, r.toUpdate(plan))
+	update := r.toUpdate(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	entry, err := r.client.UpdateEntity(ctx, update)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to configure entity", err.Error())
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(entry))...)
+	r.applyExposure(ctx, plan.EntityID.ValueString(), plan.ExposedTo, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	model := r.toModel(ctx, entry, &resp.Diagnostics)
+	model.ExposedTo = plan.ExposedTo
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
 func (r *EntityResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -165,7 +204,24 @@ func (r *EntityResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(entry))...)
+	model := r.toModel(ctx, entry, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Exposure lives in a separate registry; only track it when the field is managed.
+	if !state.ExposedTo.IsNull() {
+		current, err := r.client.GetExposedAssistants(ctx, state.EntityID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to read entity exposure", err.Error())
+			return
+		}
+		set, d := types.SetValueFrom(ctx, types.StringType, current)
+		resp.Diagnostics.Append(d...)
+		model.ExposedTo = set
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
 func (r *EntityResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -175,13 +231,24 @@ func (r *EntityResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	entry, err := r.client.UpdateEntity(ctx, r.toUpdate(plan))
+	update := r.toUpdate(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	entry, err := r.client.UpdateEntity(ctx, update)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update entity", err.Error())
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, r.toModel(entry))...)
+	r.applyExposure(ctx, plan.EntityID.ValueString(), plan.ExposedTo, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	model := r.toModel(ctx, entry, &resp.Diagnostics)
+	model.ExposedTo = plan.ExposedTo
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
 func (r *EntityResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -199,13 +266,21 @@ func (r *EntityResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		SetAreaID:     true,
 		SetDisabledBy: true,
 		SetHiddenBy:   true,
+		SetAliases:    true,
+		SetLabels:     true,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to reset entity on destroy", err.Error())
 	}
+
+	if !state.ExposedTo.IsNull() {
+		if current, err := r.client.GetExposedAssistants(ctx, state.EntityID.ValueString()); err == nil && len(current) > 0 {
+			_ = r.client.SetEntityExposure(ctx, state.EntityID.ValueString(), current, false)
+		}
+	}
 }
 
-func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
+func (r *EntityResource) toUpdate(ctx context.Context, m EntityResourceModel, diags *diag.Diagnostics) client.EntityUpdate {
 	update := client.EntityUpdate{EntityID: m.EntityID.ValueString()}
 	if !m.Name.IsNull() && !m.Name.IsUnknown() {
 		update.SetName = true
@@ -237,18 +312,81 @@ func (r *EntityResource) toUpdate(m EntityResourceModel) client.EntityUpdate {
 			update.HiddenBy = strPtr("user")
 		}
 	}
+	if !m.Aliases.IsNull() && !m.Aliases.IsUnknown() {
+		update.SetAliases = true
+		diags.Append(m.Aliases.ElementsAs(ctx, &update.Aliases, false)...)
+	}
+	if !m.Labels.IsNull() && !m.Labels.IsUnknown() {
+		update.SetLabels = true
+		diags.Append(m.Labels.ElementsAs(ctx, &update.Labels, false)...)
+	}
 	return update
 }
 
-func (r *EntityResource) toModel(e *client.EntityRegistryEntry) EntityResourceModel {
+// applyExposure makes the entity's exposure match the desired assistant set exactly.
+func (r *EntityResource) applyExposure(ctx context.Context, entityID string, desired types.Set, diags *diag.Diagnostics) {
+	if desired.IsNull() || desired.IsUnknown() {
+		return
+	}
+	var want []string
+	diags.Append(desired.ElementsAs(ctx, &want, false)...)
+	if diags.HasError() {
+		return
+	}
+	current, err := r.client.GetExposedAssistants(ctx, entityID)
+	if err != nil {
+		diags.AddError("Failed to read entity exposure", err.Error())
+		return
+	}
+	wantSet := map[string]bool{}
+	for _, a := range want {
+		wantSet[a] = true
+	}
+	curSet := map[string]bool{}
+	for _, a := range current {
+		curSet[a] = true
+	}
+	var toExpose, toUnexpose []string
+	for _, a := range want {
+		if !curSet[a] {
+			toExpose = append(toExpose, a)
+		}
+	}
+	for _, a := range current {
+		if !wantSet[a] {
+			toUnexpose = append(toUnexpose, a)
+		}
+	}
+	if len(toExpose) > 0 {
+		if err := r.client.SetEntityExposure(ctx, entityID, toExpose, true); err != nil {
+			diags.AddError("Failed to expose entity", err.Error())
+			return
+		}
+	}
+	if len(toUnexpose) > 0 {
+		if err := r.client.SetEntityExposure(ctx, entityID, toUnexpose, false); err != nil {
+			diags.AddError("Failed to unexpose entity", err.Error())
+			return
+		}
+	}
+}
+
+func (r *EntityResource) toModel(ctx context.Context, e *client.EntityRegistryEntry, diags *diag.Diagnostics) EntityResourceModel {
+	aliases, d := types.SetValueFrom(ctx, types.StringType, e.Aliases)
+	diags.Append(d...)
+	labels, d2 := types.SetValueFrom(ctx, types.StringType, e.Labels)
+	diags.Append(d2...)
 	return EntityResourceModel{
-		ID:       types.StringValue(e.EntityID),
-		DeviceID: types.StringPointerValue(e.DeviceID),
-		EntityID: types.StringValue(e.EntityID),
-		Name:     stringPtrValue(e.Name),
-		Icon:     stringPtrValue(e.Icon),
-		AreaID:   stringPtrValue(e.AreaID),
-		Enabled:  types.BoolValue(e.DisabledBy == nil),
-		Visible:  types.BoolValue(e.HiddenBy == nil),
+		ID:        types.StringValue(e.EntityID),
+		DeviceID:  types.StringPointerValue(e.DeviceID),
+		EntityID:  types.StringValue(e.EntityID),
+		Name:      stringPtrValue(e.Name),
+		Icon:      stringPtrValue(e.Icon),
+		AreaID:    stringPtrValue(e.AreaID),
+		Enabled:   types.BoolValue(e.DisabledBy == nil),
+		Visible:   types.BoolValue(e.HiddenBy == nil),
+		Aliases:   aliases,
+		Labels:    labels,
+		ExposedTo: types.SetNull(types.StringType),
 	}
 }

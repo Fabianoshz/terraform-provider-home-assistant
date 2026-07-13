@@ -92,20 +92,20 @@ func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
 }
 
 type Device struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	NameByUser       *string  `json:"name_by_user"`
-	Manufacturer     *string  `json:"manufacturer"`
-	Model            *string  `json:"model"`
-	AreaID           *string  `json:"area_id"`
-	ConfigEntries    []string `json:"config_entries"`
-	Connections      [][]string `json:"connections"`
-	Identifiers      [][]string `json:"identifiers"`
-	DisabledBy       *string  `json:"disabled_by"`
-	EntryType        *string  `json:"entry_type"`
-	HWVersion        *string  `json:"hw_version"`
-	SerialNumber     *string  `json:"serial_number"`
-	ViaDeviceID      *string  `json:"via_device_id"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	NameByUser    *string    `json:"name_by_user"`
+	Manufacturer  *string    `json:"manufacturer"`
+	Model         *string    `json:"model"`
+	AreaID        *string    `json:"area_id"`
+	ConfigEntries []string   `json:"config_entries"`
+	Connections   [][]string `json:"connections"`
+	Identifiers   [][]string `json:"identifiers"`
+	DisabledBy    *string    `json:"disabled_by"`
+	EntryType     *string    `json:"entry_type"`
+	HWVersion     *string    `json:"hw_version"`
+	SerialNumber  *string    `json:"serial_number"`
+	ViaDeviceID   *string    `json:"via_device_id"`
 }
 
 type wsResult struct {
@@ -952,17 +952,19 @@ func (c *Client) areaCommand(ctx context.Context, cmdType string, fields map[str
 }
 
 type EntityRegistryEntry struct {
-	ID           string  `json:"id"`
-	UniqueID     string  `json:"unique_id"`
-	EntityID     string  `json:"entity_id"`
-	DeviceID     *string `json:"device_id"`
-	Name         *string `json:"name"`
-	OriginalName *string `json:"original_name"`
-	Platform     string  `json:"platform"`
-	AreaID       *string `json:"area_id"`
-	DisabledBy   *string `json:"disabled_by"`
-	HiddenBy     *string `json:"hidden_by"`
-	Icon         *string `json:"icon"`
+	ID           string   `json:"id"`
+	UniqueID     string   `json:"unique_id"`
+	EntityID     string   `json:"entity_id"`
+	DeviceID     *string  `json:"device_id"`
+	Name         *string  `json:"name"`
+	OriginalName *string  `json:"original_name"`
+	Platform     string   `json:"platform"`
+	AreaID       *string  `json:"area_id"`
+	DisabledBy   *string  `json:"disabled_by"`
+	HiddenBy     *string  `json:"hidden_by"`
+	Icon         *string  `json:"icon"`
+	Aliases      []string `json:"aliases"`
+	Labels       []string `json:"labels"`
 }
 
 func (c *Client) GetEntityRegistry(ctx context.Context) ([]EntityRegistryEntry, error) {
@@ -1033,6 +1035,10 @@ type EntityUpdate struct {
 	SetAreaID     bool
 	SetDisabledBy bool
 	SetHiddenBy   bool
+	SetAliases    bool
+	SetLabels     bool
+	Aliases       []string
+	Labels        []string
 }
 
 func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*EntityRegistryEntry, error) {
@@ -1061,6 +1067,18 @@ func (c *Client) UpdateEntity(ctx context.Context, update EntityUpdate) (*Entity
 	}
 	if update.SetHiddenBy {
 		payload["hidden_by"] = update.HiddenBy
+	}
+	if update.SetAliases {
+		if update.Aliases == nil {
+			update.Aliases = []string{}
+		}
+		payload["aliases"] = update.Aliases
+	}
+	if update.SetLabels {
+		if update.Labels == nil {
+			update.Labels = []string{}
+		}
+		payload["labels"] = update.Labels
 	}
 
 	if err := conn.WriteJSON(payload); err != nil {
@@ -1121,10 +1139,10 @@ func (c *Client) GetEntitiesForDevice(ctx context.Context, deviceID string) ([]E
 }
 
 type DeviceUpdate struct {
-	DeviceID    string  `json:"device_id"`
-	NameByUser  *string `json:"name_by_user"`
-	AreaID      *string `json:"area_id"`
-	DisabledBy  *string `json:"disabled_by"`
+	DeviceID   string  `json:"device_id"`
+	NameByUser *string `json:"name_by_user"`
+	AreaID     *string `json:"area_id"`
+	DisabledBy *string `json:"disabled_by"`
 }
 
 func (c *Client) UpdateDevice(ctx context.Context, update DeviceUpdate) (*Device, error) {
@@ -1135,12 +1153,12 @@ func (c *Client) UpdateDevice(ctx context.Context, update DeviceUpdate) (*Device
 	defer conn.Close()
 
 	payload := map[string]any{
-		"id":          1,
-		"type":        "config/device_registry/update",
-		"device_id":   update.DeviceID,
+		"id":           1,
+		"type":         "config/device_registry/update",
+		"device_id":    update.DeviceID,
 		"name_by_user": update.NameByUser,
-		"area_id":     update.AreaID,
-		"disabled_by": update.DisabledBy,
+		"area_id":      update.AreaID,
+		"disabled_by":  update.DisabledBy,
 	}
 
 	if err := conn.WriteJSON(payload); err != nil {
@@ -1210,4 +1228,162 @@ func (c *Client) getRegistries(ctx context.Context) ([]Device, []EntityRegistryE
 	}
 
 	return devices, entities, nil
+}
+
+// SetEntityExposure exposes or unexposes an entity for the given assistants.
+func (c *Client) SetEntityExposure(ctx context.Context, entityID string, assistants []string, shouldExpose bool) error {
+	if len(assistants) == 0 {
+		return nil
+	}
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	payload := map[string]any{
+		"id":            1,
+		"type":          "homeassistant/expose_entity",
+		"assistants":    assistants,
+		"entity_ids":    []string{entityID},
+		"should_expose": shouldExpose,
+	}
+	if err := conn.WriteJSON(payload); err != nil {
+		return fmt.Errorf("sending expose_entity: %w", err)
+	}
+	var result wsResult
+	if err := conn.ReadJSON(&result); err != nil {
+		return fmt.Errorf("reading expose_entity response: %w", err)
+	}
+	if !result.Success {
+		if result.Error != nil {
+			return fmt.Errorf("expose_entity error %s: %s", result.Error.Code, result.Error.Message)
+		}
+		return fmt.Errorf("expose_entity failed")
+	}
+	return nil
+}
+
+// GetExposedAssistants returns the assistants an entity is currently exposed to.
+func (c *Client) GetExposedAssistants(ctx context.Context, entityID string) ([]string, error) {
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	if err := conn.WriteJSON(map[string]any{"id": 1, "type": "homeassistant/expose_entity/list"}); err != nil {
+		return nil, fmt.Errorf("sending expose_entity/list: %w", err)
+	}
+	var result wsResult
+	if err := conn.ReadJSON(&result); err != nil {
+		return nil, fmt.Errorf("reading expose_entity/list response: %w", err)
+	}
+	if !result.Success {
+		if result.Error != nil {
+			return nil, fmt.Errorf("expose_entity/list error %s: %s", result.Error.Code, result.Error.Message)
+		}
+		return nil, fmt.Errorf("expose_entity/list failed")
+	}
+	var wrapper struct {
+		ExposedEntities map[string]map[string]bool `json:"exposed_entities"`
+	}
+	if err := json.Unmarshal(result.Result, &wrapper); err != nil {
+		return nil, fmt.Errorf("decoding expose_entity/list: %w", err)
+	}
+	var assistants []string
+	for a, exposed := range wrapper.ExposedEntities[entityID] {
+		if exposed {
+			assistants = append(assistants, a)
+		}
+	}
+	return assistants, nil
+}
+
+// Label is a Home Assistant label registry entry.
+type Label struct {
+	LabelID     string  `json:"label_id"`
+	Name        string  `json:"name"`
+	Color       *string `json:"color"`
+	Icon        *string `json:"icon"`
+	Description *string `json:"description"`
+}
+
+func (c *Client) CreateLabel(ctx context.Context, name string, color, icon, description *string) (*Label, error) {
+	fields := map[string]any{"name": name, "color": color, "icon": icon, "description": description}
+	return c.labelCommandOne(ctx, "config/label_registry/create", fields)
+}
+
+func (c *Client) UpdateLabel(ctx context.Context, labelID, name string, color, icon, description *string) (*Label, error) {
+	fields := map[string]any{"label_id": labelID, "name": name, "color": color, "icon": icon, "description": description}
+	return c.labelCommandOne(ctx, "config/label_registry/update", fields)
+}
+
+func (c *Client) DeleteLabel(ctx context.Context, labelID string) error {
+	_, err := c.labelCommand(ctx, "config/label_registry/delete", map[string]any{"label_id": labelID})
+	return err
+}
+
+func (c *Client) GetLabels(ctx context.Context) ([]Label, error) {
+	result, err := c.labelCommand(ctx, "config/label_registry/list", nil)
+	if err != nil {
+		return nil, err
+	}
+	var labels []Label
+	if err := json.Unmarshal(result, &labels); err != nil {
+		return nil, fmt.Errorf("decoding labels: %w", err)
+	}
+	return labels, nil
+}
+
+func (c *Client) GetLabel(ctx context.Context, labelID string) (*Label, error) {
+	labels, err := c.GetLabels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range labels {
+		if l.LabelID == labelID {
+			return &l, nil
+		}
+	}
+	return nil, nil
+}
+
+func (c *Client) labelCommandOne(ctx context.Context, cmdType string, fields map[string]any) (*Label, error) {
+	result, err := c.labelCommand(ctx, cmdType, fields)
+	if err != nil {
+		return nil, err
+	}
+	var label Label
+	if err := json.Unmarshal(result, &label); err != nil {
+		return nil, fmt.Errorf("decoding label: %w", err)
+	}
+	return &label, nil
+}
+
+func (c *Client) labelCommand(ctx context.Context, cmdType string, fields map[string]any) (json.RawMessage, error) {
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	msg := map[string]any{"id": 1, "type": cmdType}
+	for k, v := range fields {
+		msg[k] = v
+	}
+	if err := conn.WriteJSON(msg); err != nil {
+		return nil, fmt.Errorf("sending label command: %w", err)
+	}
+	var result wsResult
+	if err := conn.ReadJSON(&result); err != nil {
+		return nil, fmt.Errorf("reading label response: %w", err)
+	}
+	if !result.Success {
+		if result.Error != nil {
+			return nil, fmt.Errorf("label command error %s: %s", result.Error.Code, result.Error.Message)
+		}
+		return nil, fmt.Errorf("label command failed")
+	}
+	return result.Result, nil
 }
