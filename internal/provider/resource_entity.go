@@ -216,6 +216,9 @@ func (r *EntityResource) Read(ctx context.Context, req resource.ReadRequest, res
 			resp.Diagnostics.AddError("Failed to read entity exposure", err.Error())
 			return
 		}
+		if current == nil {
+			current = []string{}
+		}
 		set, d := types.SetValueFrom(ctx, types.StringType, current)
 		resp.Diagnostics.Append(d...)
 		model.ExposedTo = set
@@ -372,10 +375,6 @@ func (r *EntityResource) applyExposure(ctx context.Context, entityID string, des
 }
 
 func (r *EntityResource) toModel(ctx context.Context, e *client.EntityRegistryEntry, diags *diag.Diagnostics) EntityResourceModel {
-	aliases, d := types.SetValueFrom(ctx, types.StringType, e.Aliases)
-	diags.Append(d...)
-	labels, d2 := types.SetValueFrom(ctx, types.StringType, e.Labels)
-	diags.Append(d2...)
 	return EntityResourceModel{
 		ID:        types.StringValue(e.EntityID),
 		DeviceID:  types.StringPointerValue(e.DeviceID),
@@ -385,8 +384,26 @@ func (r *EntityResource) toModel(ctx context.Context, e *client.EntityRegistryEn
 		AreaID:    stringPtrValue(e.AreaID),
 		Enabled:   types.BoolValue(e.DisabledBy == nil),
 		Visible:   types.BoolValue(e.HiddenBy == nil),
-		Aliases:   aliases,
-		Labels:    labels,
+		Aliases:   strsToSet(ctx, e.Aliases, diags),
+		Labels:    strsToSet(ctx, e.Labels, diags),
 		ExposedTo: types.SetNull(types.StringType),
 	}
+}
+
+// strsToSet converts a string slice to a set, dropping blank entries and
+// returning a null set when nothing remains. HA returns [] or [""] for "no
+// aliases/labels", which must normalize to null to match an unset config.
+func strsToSet(ctx context.Context, in []string, diags *diag.Diagnostics) types.Set {
+	vals := make([]string, 0, len(in))
+	for _, v := range in {
+		if v != "" {
+			vals = append(vals, v)
+		}
+	}
+	if len(vals) == 0 {
+		return types.SetNull(types.StringType)
+	}
+	set, d := types.SetValueFrom(ctx, types.StringType, vals)
+	diags.Append(d...)
+	return set
 }
