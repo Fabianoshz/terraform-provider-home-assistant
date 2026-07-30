@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -22,18 +23,21 @@ func NewAutomationsDataSource() datasource.DataSource {
 
 // AutomationModel is shared between the resource and data source.
 type AutomationModel struct {
-	ID             types.String `tfsdk:"id"`
-	Alias          types.String `tfsdk:"alias"`
-	Description    types.String `tfsdk:"description"`
-	Mode           types.String `tfsdk:"mode"`
-	Trigger        types.String `tfsdk:"trigger"`
-	Condition      types.String `tfsdk:"condition"`
-	Action         types.String `tfsdk:"action"`
-	BlueprintPath  types.String `tfsdk:"blueprint_path"`
-	BlueprintInput types.String `tfsdk:"blueprint_input"`
-	AreaID         types.String `tfsdk:"area_id"`
-	Enabled        types.Bool   `tfsdk:"enabled"`
-	Visible        types.Bool   `tfsdk:"visible"`
+	ID          types.String `tfsdk:"id"`
+	Alias       types.String `tfsdk:"alias"`
+	Description types.String `tfsdk:"description"`
+	Mode        types.String `tfsdk:"mode"`
+	// JSON strings that Home Assistant may reformat on save. jsontypes.Normalized
+	// compares them by semantic JSON equality, so cosmetic reformatting doesn't
+	// produce a perma-diff or an "inconsistent result after apply" error.
+	Trigger        jsontypes.Normalized `tfsdk:"trigger"`
+	Condition      jsontypes.Normalized `tfsdk:"condition"`
+	Action         jsontypes.Normalized `tfsdk:"action"`
+	BlueprintPath  types.String         `tfsdk:"blueprint_path"`
+	BlueprintInput types.String         `tfsdk:"blueprint_input"`
+	AreaID         types.String         `tfsdk:"area_id"`
+	Enabled        types.Bool           `tfsdk:"enabled"`
+	Visible        types.Bool           `tfsdk:"visible"`
 }
 
 type AutomationsDataSourceModel struct {
@@ -52,18 +56,18 @@ func (d *AutomationsDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 				Computed: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"id":          schema.StringAttribute{Computed: true, Description: "Automation ID."},
-						"alias":       schema.StringAttribute{Computed: true, Description: "Display name."},
-						"description": schema.StringAttribute{Computed: true, Description: "Description."},
-						"mode":        schema.StringAttribute{Computed: true, Description: "Automation mode."},
-						"trigger":         schema.StringAttribute{Computed: true, Description: "JSON-encoded triggers."},
-						"condition":       schema.StringAttribute{Computed: true, Description: "JSON-encoded conditions."},
-						"action":          schema.StringAttribute{Computed: true, Description: "JSON-encoded actions."},
+						"id":              schema.StringAttribute{Computed: true, Description: "Automation ID."},
+						"alias":           schema.StringAttribute{Computed: true, Description: "Display name."},
+						"description":     schema.StringAttribute{Computed: true, Description: "Description."},
+						"mode":            schema.StringAttribute{Computed: true, Description: "Automation mode."},
+						"trigger":         schema.StringAttribute{CustomType: jsontypes.NormalizedType{}, Computed: true, Description: "JSON-encoded triggers."},
+						"condition":       schema.StringAttribute{CustomType: jsontypes.NormalizedType{}, Computed: true, Description: "JSON-encoded conditions."},
+						"action":          schema.StringAttribute{CustomType: jsontypes.NormalizedType{}, Computed: true, Description: "JSON-encoded actions."},
 						"blueprint_path":  schema.StringAttribute{Computed: true, Description: "Path of the blueprint this automation is based on, if any."},
 						"blueprint_input": schema.StringAttribute{Computed: true, Description: "JSON-encoded blueprint inputs, if this automation uses a blueprint."},
 						"area_id":         schema.StringAttribute{Computed: true, Description: "Area assigned to this automation."},
-						"enabled":   schema.BoolAttribute{Computed: true, Description: "Whether the automation is enabled."},
-						"visible":   schema.BoolAttribute{Computed: true, Description: "Whether the automation is visible."},
+						"enabled":         schema.BoolAttribute{Computed: true, Description: "Whether the automation is enabled."},
+						"visible":         schema.BoolAttribute{Computed: true, Description: "Whether the automation is visible."},
 					},
 				},
 			},

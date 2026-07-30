@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Fabianoshz/terraform-provider-homeassistant/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -45,9 +46,13 @@ func (r *AutomationResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"alias":       schema.StringAttribute{Required: true, Description: "Display name of the automation."},
 			"description": schema.StringAttribute{Optional: true, Computed: true, Description: "Description of what the automation does."},
 			"mode":        schema.StringAttribute{Optional: true, Computed: true, Description: "Automation mode: single, restart, queued, or parallel. Defaults to single."},
-			"trigger":   schema.StringAttribute{Optional: true, Description: "JSON-encoded list of triggers. Required unless blueprint_path is set; conflicts with blueprint_path."},
-			"condition": schema.StringAttribute{Optional: true, Computed: true, Description: "JSON-encoded list of conditions. Conflicts with blueprint_path."},
-			"action":    schema.StringAttribute{Optional: true, Description: "JSON-encoded list of actions. Required unless blueprint_path is set; conflicts with blueprint_path."},
+			// Computed + jsontypes.Normalized: Home Assistant reformats the stored
+			// config (whitespace, key order), so the value read back can differ
+			// textually from what was written. Semantic JSON equality reconciles
+			// them, preventing perma-diffs and "inconsistent result after apply".
+			"trigger":   schema.StringAttribute{CustomType: jsontypes.NormalizedType{}, Optional: true, Computed: true, Description: "JSON-encoded list of triggers. Required unless blueprint_path is set; conflicts with blueprint_path."},
+			"condition": schema.StringAttribute{CustomType: jsontypes.NormalizedType{}, Optional: true, Computed: true, Description: "JSON-encoded list of conditions. Conflicts with blueprint_path."},
+			"action":    schema.StringAttribute{CustomType: jsontypes.NormalizedType{}, Optional: true, Computed: true, Description: "JSON-encoded list of actions. Required unless blueprint_path is set; conflicts with blueprint_path."},
 			"blueprint_path": schema.StringAttribute{
 				Optional:    true,
 				Description: "Path of the blueprint to base this automation on (relative to the automation blueprints directory, e.g. \"my_blueprint.yaml\"). Mutually exclusive with trigger/condition/action.",
@@ -56,7 +61,7 @@ func (r *AutomationResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Optional:    true,
 				Description: "JSON-encoded object mapping blueprint input names to values. Requires blueprint_path.",
 			},
-			"area_id":   schema.StringAttribute{Optional: true, Description: "Area to assign this automation to."},
+			"area_id": schema.StringAttribute{Optional: true, Description: "Area to assign this automation to."},
 			"enabled": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
@@ -223,9 +228,9 @@ func automationToModel(a *client.Automation) AutomationModel {
 		Alias:          types.StringValue(a.Alias),
 		Description:    types.StringValue(a.Description),
 		Mode:           types.StringValue(mode),
-		Trigger:        types.StringNull(),
-		Condition:      types.StringNull(),
-		Action:         types.StringNull(),
+		Trigger:        jsontypes.NewNormalizedNull(),
+		Condition:      jsontypes.NewNormalizedNull(),
+		Action:         jsontypes.NewNormalizedNull(),
 		BlueprintPath:  types.StringNull(),
 		BlueprintInput: types.StringNull(),
 		AreaID:         stringPtrValue(a.AreaID),
@@ -238,9 +243,9 @@ func automationToModel(a *client.Automation) AutomationModel {
 			m.BlueprintInput = types.StringValue(normalizeJSON(a.UseBlueprint.Input))
 		}
 	} else {
-		m.Trigger = types.StringValue(rawToString(a.Trigger, "[]"))
-		m.Condition = types.StringValue(rawToString(a.Condition, "[]"))
-		m.Action = types.StringValue(rawToString(a.Action, "[]"))
+		m.Trigger = jsontypes.NewNormalizedValue(rawToString(a.Trigger, "[]"))
+		m.Condition = jsontypes.NewNormalizedValue(rawToString(a.Condition, "[]"))
+		m.Action = jsontypes.NewNormalizedValue(rawToString(a.Action, "[]"))
 	}
 	return m
 }
