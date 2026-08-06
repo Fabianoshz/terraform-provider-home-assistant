@@ -116,6 +116,10 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 
 	mux := http.NewServeMux()
 
+	// exposed_entities registry (entity_id -> assistant -> exposed), shared
+	// across websocket connections since the client dials a fresh one per call.
+	exposures := map[string]map[string]bool{}
+
 	mux.HandleFunc("/api/websocket", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -377,6 +381,30 @@ func NewMockHAServer(t *testing.T, cfg MockServerConfig) *httptest.Server {
 					payload = cfg.Devices[i]
 					break
 				}
+			case "homeassistant/expose_entity":
+				shouldExpose, _ := cmd["should_expose"].(bool)
+				collect := func(key string) []string {
+					var out []string
+					if arr, ok := cmd[key].([]any); ok {
+						for _, v := range arr {
+							if s, ok := v.(string); ok {
+								out = append(out, s)
+							}
+						}
+					}
+					return out
+				}
+				for _, e := range collect("entity_ids") {
+					if exposures[e] == nil {
+						exposures[e] = map[string]bool{}
+					}
+					for _, a := range collect("assistants") {
+						exposures[e][a] = shouldExpose
+					}
+				}
+				payload = map[string]any{}
+			case "homeassistant/expose_entity/list":
+				payload = map[string]any{"exposed_entities": exposures}
 			default:
 				continue
 			}

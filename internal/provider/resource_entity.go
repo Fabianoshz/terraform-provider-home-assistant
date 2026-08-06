@@ -54,10 +54,12 @@ func (r *EntityResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"device_id": schema.StringAttribute{
-				Required:    true,
-				Description: "The ID of the device this entity belongs to.",
+				Optional:    true,
+				Computed:    true,
+				Description: "The ID of the device this entity belongs to. Omit for entities with no device (scripts, automations, helpers). When set, the entity is validated to belong to it.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"entity_id": schema.StringAttribute{
@@ -162,9 +164,13 @@ func (r *EntityResource) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddError("Entity not found", fmt.Sprintf("Entity %q does not exist in the registry.", plan.EntityID.ValueString()))
 		return
 	}
-	if existing.DeviceID == nil || *existing.DeviceID != plan.DeviceID.ValueString() {
-		resp.Diagnostics.AddError("Entity does not belong to device", fmt.Sprintf("Entity %q does not belong to device %q.", plan.EntityID.ValueString(), plan.DeviceID.ValueString()))
-		return
+	// Only enforce the device binding when a device_id is being managed.
+	// Deviceless entities (scripts, automations, helpers) omit it.
+	if !plan.DeviceID.IsNull() && !plan.DeviceID.IsUnknown() && plan.DeviceID.ValueString() != "" {
+		if existing.DeviceID == nil || *existing.DeviceID != plan.DeviceID.ValueString() {
+			resp.Diagnostics.AddError("Entity does not belong to device", fmt.Sprintf("Entity %q does not belong to device %q.", plan.EntityID.ValueString(), plan.DeviceID.ValueString()))
+			return
+		}
 	}
 
 	update := r.toUpdate(ctx, plan, &resp.Diagnostics)
@@ -199,7 +205,12 @@ func (r *EntityResource) Read(ctx context.Context, req resource.ReadRequest, res
 		resp.Diagnostics.AddError("Failed to read entity", err.Error())
 		return
 	}
-	if entry == nil || entry.DeviceID == nil || *entry.DeviceID != state.DeviceID.ValueString() {
+	if entry == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	// Enforce the device binding only when a device_id is tracked in state.
+	if !state.DeviceID.IsNull() && (entry.DeviceID == nil || *entry.DeviceID != state.DeviceID.ValueString()) {
 		resp.State.RemoveResource(ctx)
 		return
 	}

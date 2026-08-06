@@ -94,6 +94,35 @@ resource "homeassistant_entity" "temp" {
 	})
 }
 
+func TestEntityResource_devicelessExposure(t *testing.T) {
+	// A script has no device; device_id is omitted and exposure is managed.
+	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{
+		Token: "test-token",
+		EntityRegistry: []testutil.MockEntityRegistry{
+			{EntityID: "script.bedtime", Platform: "script"},
+		},
+	})
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig(srv.URL, "test-token") + `
+resource "homeassistant_entity" "script" {
+  entity_id  = "script.bedtime"
+  exposed_to = ["conversation"]
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("homeassistant_entity.script", "entity_id", "script.bedtime"),
+					resource.TestCheckResourceAttr("homeassistant_entity.script", "exposed_to.#", "1"),
+					resource.TestCheckResourceAttr("homeassistant_entity.script", "exposed_to.0", "conversation"),
+				),
+			},
+		},
+	})
+}
+
 func TestEntityResource_update(t *testing.T) {
 	deviceID := "device-1"
 	srv := testutil.NewMockHAServer(t, testutil.MockServerConfig{
